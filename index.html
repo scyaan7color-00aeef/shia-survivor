@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>シア・サバイバー</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- ゲーム描画キャンバス -->
+  <canvas id="game"></canvas>
+
+  <!-- HUD（HP・レベル・経験値・コイン・タイマー・撃破数） -->
+  <div id="hud" class="hidden">
+    <div id="xpbar-wrap"><div id="xpbar"></div></div>
+    <div id="hud-row">
+      <div id="hud-left">
+        <div id="hpbar-wrap"><div id="hpbar"></div><span id="hp-text"></span></div>
+        <span class="hud-item" id="level-text">Lv 1</span>
+      </div>
+      <div id="hud-center">
+        <span id="timer-text">00:00</span>
+      </div>
+      <div id="hud-right">
+        <span class="hud-item" id="coin-text">🪙 0</span>
+        <span class="hud-item" id="kill-text">💥 0</span>
+        <button id="sfx-toggle" title="効果音ON/OFF">🔊</button>
+        <button id="pause-btn" title="一時停止">⏸</button>
+      </div>
+    </div>
+    <!-- 取得武器/パッシブの小アイコン一覧（進化可能な組合せは光る） -->
+    <div id="weapon-bar"></div>
+  </div>
+
+  <!-- タイトル画面 -->
+  <div id="title-screen" class="overlay">
+    <div class="panel">
+      <h1>シア・サバイバー</h1>
+      <p class="subtitle">〜 押し寄せる敵をかわして生き延びろ 〜</p>
+      <p class="howto">
+        🎮 移動：WASD／矢印キー（スマホは画面をドラッグ）<br>
+        ⚔️ 攻撃は自動。移動と回避に集中しよう<br>
+        💎 ジェムを拾うとレベルアップ、4択で強化<br>
+        ⏸ 一時停止中はコインでショップを利用
+      </p>
+      <p class="subtitle">使うキャラを選ぼう</p>
+      <div id="char-select"></div>
+      <p id="best-text" class="best"></p>
+      <button id="start-btn" class="big-btn">ゲームスタート</button>
+      <div id="title-btn-row">
+        <button id="prestige-btn" class="sub-btn">🌌 転生</button>
+        <button id="ranking-btn" class="sub-btn">🏆 記録</button>
+        <button id="history-btn" class="sub-btn">📜 履歴</button>
+        <button id="dex-btn" class="sub-btn">📖 図鑑</button>
+        <button id="feedback-btn" class="sub-btn">💬 フィードバック</button>
+        <button id="sfx-toggle-title" class="sub-btn">🔊 音ON</button>
+      </div>
+      <div id="ranking-title" class="ranking-wrap"></div>
+      <p class="bgm-credit">🎵 BGM「月の降る街」／ KK（DOVA-SYNDROME）</p>
+    </div>
+  </div>
+
+  <!-- ランキング確認画面 -->
+  <div id="ranking-screen" class="overlay hidden">
+    <div class="panel">
+      <h2>🏆 ランキング</h2>
+      <div id="ranking-full" class="ranking-wrap"></div>
+      <button id="ranking-close" class="big-btn">閉じる</button>
+    </div>
+  </div>
+
+  <!-- 敵モンスター図鑑 -->
+  <div id="dex-screen" class="overlay hidden">
+    <div class="panel">
+      <h2>📖 モンスター図鑑</h2>
+      <div id="dex-items"></div>
+      <button id="dex-close" class="big-btn">閉じる</button>
+    </div>
+  </div>
+
+  <!-- プレイ履歴（時系列） -->
+  <div id="history-screen" class="overlay hidden">
+    <div class="panel">
+      <h2>📜 プレイ履歴</h2>
+      <p class="subtitle">直近のプレイ結果（新しい順）</p>
+      <div id="history-items"></div>
+      <button id="history-close" class="big-btn">閉じる</button>
+    </div>
+  </div>
+
+  <!-- フィードバック受付（ローカル保存・将来オンライン送信フック付き） -->
+  <div id="feedback-screen" class="overlay hidden">
+    <div class="panel">
+      <h2>💬 フィードバック</h2>
+      <p class="subtitle">感想・要望・バグ報告など、なんでもどうぞ</p>
+      <textarea id="feedback-text" rows="5" maxlength="1000" placeholder="例：〇〇が強すぎる、△△がほしい、ここでバグった…など"></textarea>
+      <p id="feedback-thanks" class="record hidden">🩵 ありがとう！ 大切に読みます</p>
+      <div id="feedback-btn-row">
+        <button id="feedback-send" class="big-btn">送信する</button>
+        <button id="feedback-close" class="big-btn ghost-btn">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 転生（プレステージ）ショップ -->
+  <div id="prestige-screen" class="overlay hidden">
+    <div class="panel">
+      <h2>🌌 転生</h2>
+      <p class="subtitle">星屑を使う恒久強化。周回するほど強くなる</p>
+      <p id="stardust-text" class="best">✨ 星屑：0</p>
+      <div id="prestige-items"></div>
+      <button id="prestige-close" class="big-btn">閉じる</button>
+    </div>
+  </div>
+
+  <!-- レベルアップ4択（進化候補あり） -->
+  <div id="levelup-screen" class="overlay hidden">
+    <div class="panel">
+      <h2>✨ レベルアップ！ ✨</h2>
+      <p class="subtitle">強化を1つ選ぼう（✦は武器進化）</p>
+      <div id="upgrade-cards"></div>
+      <div id="levelup-controls"></div>
+    </div>
+  </div>
+
+  <!-- 一時停止＆ショップ -->
+  <div id="pause-screen" class="overlay hidden">
+    <div class="panel">
+      <h2>⏸ 一時停止</h2>
+      <p class="subtitle">🎁 所持している強化</p>
+      <div id="acquired-cards"></div>
+      <p class="subtitle">🪙 ショップ（コインで購入）</p>
+      <div id="shop-items"></div>
+      <div id="pause-btn-row">
+        <button id="resume-btn" class="big-btn">ゲームに戻る</button>
+        <button id="pause-home-btn" class="big-btn ghost-btn">🏠 ホームに戻る</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ゲームオーバー -->
+  <div id="gameover-screen" class="overlay hidden">
+    <div class="panel">
+      <h2>💀 ゲームオーバー</h2>
+      <div id="result-stats"></div>
+      <p id="stardust-gain" class="stardust-gain"></p>
+      <p id="newrecord-text" class="record hidden"></p>
+      <div id="name-row">
+        <input id="name-input" type="text" maxlength="12" placeholder="なまえ" autocomplete="off">
+        <button id="name-save">名前を保存</button>
+      </div>
+      <div id="ranking-gameover" class="ranking-wrap"></div>
+      <div id="gameover-btn-row">
+        <button id="retry-btn" class="big-btn">もう一度</button>
+        <button id="home-btn" class="big-btn ghost-btn">🏠 ホームに戻る</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
