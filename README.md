@@ -2,7 +2,7 @@
 
 押し寄せる敵をかわして生き延びる、ブラウザで遊べる見下ろし型サバイバーアクション。
 
-▶ **遊ぶ:** GitHub Pages（公開後にURLをここへ）
+▶ **遊ぶ:** https://scyaan7color-00aeef.github.io/shia-survivor/
 
 ## 遊び方
 - 移動：WASD ／ 矢印キー（スマホは画面をドラッグ）
