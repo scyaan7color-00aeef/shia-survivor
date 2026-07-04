@@ -104,7 +104,9 @@ const CONFIG = {
   HISTORY_MAX: 15,           // 履歴の保持件数
   EVO_EVERY_LEVELS: 4,       // 進化（昇格）候補を出すレベル間隔（Lv4/8/12…）
   SFX_KEY: 'cyanissimo_survivor_sfx',              // 効果音ON/OFF
-  FEEDBACK_KEY: 'cyanissimo_survivor_feedback_v1', // フィードバック（ローカル保存・将来オンライン送信）
+  FEEDBACK_KEY: 'cyanissimo_survivor_feedback_v1', // フィードバック（ローカル保存＋Googleフォーム送信）
+  FEEDBACK_FORM_URL: 'https://docs.google.com/forms/d/e/1FAIpQLSfgaZPdV1Qavr-BABAamBR41MleNkEdvfe1f94zzLZNZoi1eQ/formResponse', // Googleフォーム回答エンドポイント
+  FEEDBACK_FORM_ENTRY: 'entry.846507698',          // 「感想・要望・バグ報告など」段落フィールドのID
   EVO_MAX_PER_RUN: 3,        // 1ランの進化上限（進化研究で+1）
   EVO_PASSIVE_REQ: 2,        // 進化に必要なパッシブLv（進化研究で-1・緩和済み）
   EVO_CORE_REQ: 4,           // 進化に必要な武器コアLv（Maxでなくても届く＝緩和済み）
@@ -3466,7 +3468,15 @@ function submitFeedback(text) {
   const list = loadFeedback();
   list.push(entry);
   try { localStorage.setItem(CONFIG.FEEDBACK_KEY, JSON.stringify(list.slice(-50))); } catch { return false; }
-  // TODO(オンライン): ここで fetch('/api/feedback', {method:'POST', body: JSON.stringify(entry)}) 等を差し込む
+  // オンライン送信：Googleフォームの回答へ送る（no-corsで投げっぱなし。失敗してもローカルには残る）
+  try {
+    if (CONFIG.FEEDBACK_FORM_URL && CONFIG.FEEDBACK_FORM_ENTRY) {
+      const body = new URLSearchParams();
+      const who = entry.name ? `[${entry.name}] ` : ''; // 名前があれば本文頭に付与（フォームは1フィールド）
+      body.append(CONFIG.FEEDBACK_FORM_ENTRY, who + entry.text);
+      fetch(CONFIG.FEEDBACK_FORM_URL, { method: 'POST', mode: 'no-cors', body }).catch(() => {});
+    }
+  } catch { /* 送信失敗はローカル保存で担保 */ }
   return true;
 }
 function showFeedback() {
