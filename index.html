@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>シア・サバイバー</title>
-<link rel="stylesheet" href="style.css?v=8">
+<link rel="stylesheet" href="style.css?v=9">
 </head>
 <body>
   <!-- ゲーム描画キャンバス -->
@@ -121,6 +121,28 @@
         <button id="skin-toggle" class="big-btn ghost-btn hidden">使用中：ON</button>
         <button id="skin-clear" class="big-btn ghost-btn hidden">削除</button>
       </div>
+      <button id="skin-howto-btn" class="sub-btn" style="margin-top:12px">📖 スプライト集の作り方（ChatGPTで作る）</button>
+      <div id="skin-howto" class="hidden" style="text-align:left;margin-top:10px">
+        <p class="howto">
+          スプライト集がなくても、ChatGPT（無料枠でOK）と自分のキャラ画像1枚から作れます👇<br>
+          ① 下の「見本シート」を長押し／右クリックで保存<br>
+          ② ChatGPTを開き、<b>自分のキャラ画像</b>＋<b>見本シート</b>＋下のプロンプトを一緒に送る<br>
+          ③ 出てきた画像を保存 → 上の「画像を選ぶ」で読み込む<br>
+          <span style="color:#9fb0d0">※AIの出力は完璧な整列にならないことがあります。うまくいかない時は「見本と同じ8列×9行のグリッドに揃えて」と追記してみてください。</span>
+        </p>
+        <p class="subtitle"><a id="skin-sample-link" href="assets/cyanissimo_sprites.png" target="_blank" rel="noopener" style="color:#7dd3fc">🖼 見本シートを開く（保存して使う）</a></p>
+        <textarea id="skin-prompt" readonly rows="10" style="width:100%;background:rgba(255,255,255,0.08);border:1px solid rgba(120,160,255,0.4);border-radius:10px;color:#e8ecf5;font-size:12px;line-height:1.6;padding:10px 12px;font-family:inherit;resize:vertical">ブラウザゲーム「シア・サバイバー」で動かすキャラのスプライト集を作ってください。
+
+【出力仕様】
+・1枚の画像に 8列 × 9行 = 72コマ を等間隔のグリッドで並べる
+・各コマは同じサイズ・透明背景・キャラは中央
+・行ごとのポーズ（左→右で少しずつ動く連続アニメにする）：
+　1行目 待機／2行目 右へ走る／3行目 左へ走る／4行目 手を振る／5行目 ジャンプ／6行目 転ぶ／7行目 走る／8行目 待つ／9行目 本を読む
+・添付の「見本シート」とまったく同じコマ配置・向き・サイズ感にする
+・添付の「キャラ画像」の見た目（髪色・服・雰囲気）を反映する
+・アニメ調で、動かすと可愛いテイストに</textarea>
+        <button id="skin-copy" class="big-btn" style="margin-top:8px">プロンプトをコピー</button>
+      </div>
       <button id="skin-close" class="big-btn ghost-btn" style="margin-top:12px">閉じる</button>
     </div>
   </div>
@@ -180,6 +202,6 @@
     </div>
   </div>
 
-  <script src="game.js?v=8"></script>
+  <script src="game.js?v=9"></script>
 </body>
 </html>

@@ -682,6 +682,7 @@ const ui = {
   skinBtn: $('skin-btn'), skinScreen: $('skin-screen'), skinFile: $('skin-file'),
   skinPick: $('skin-pick'), skinToggle: $('skin-toggle'), skinClear: $('skin-clear'),
   skinClose: $('skin-close'), skinPreview: $('skin-preview'), skinStatus: $('skin-status'),
+  skinHowtoBtn: $('skin-howto-btn'), skinHowto: $('skin-howto'), skinCopy: $('skin-copy'), skinPrompt: $('skin-prompt'),
   gameoverScreen: $('gameover-screen'), resultStats: $('result-stats'),
   newrecordText: $('newrecord-text'), retryBtn: $('retry-btn'), homeBtn: $('home-btn'),
   nameInput: $('name-input'), nameSave: $('name-save'), rankingGameover: $('ranking-gameover'),
@@ -3729,6 +3730,13 @@ if (ui.skinFile) ui.skinFile.addEventListener('change', (e) => {
 });
 if (ui.skinToggle) ui.skinToggle.addEventListener('click', () => { setCustomSkinEnabled(!customSkinOn); refreshSkinUI(); });
 if (ui.skinClear) ui.skinClear.addEventListener('click', () => { clearCustomSkin(); refreshSkinUI(); });
+if (ui.skinHowtoBtn) ui.skinHowtoBtn.addEventListener('click', () => ui.skinHowto && ui.skinHowto.classList.toggle('hidden'));
+if (ui.skinCopy) ui.skinCopy.addEventListener('click', () => {
+  if (!ui.skinPrompt) return;
+  const done = () => { ui.skinCopy.textContent = 'コピーしました！'; setTimeout(() => { ui.skinCopy.textContent = 'プロンプトをコピー'; }, 1500); };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(ui.skinPrompt.value).then(done, () => { ui.skinPrompt.select(); document.execCommand('copy'); done(); });
+  else { ui.skinPrompt.select(); document.execCommand('copy'); done(); }
+});
 
 // 一時停止→ホーム（タイトル）へ戻る（ランは破棄）
 if (ui.pauseHomeBtn) ui.pauseHomeBtn.addEventListener('click', () => {
