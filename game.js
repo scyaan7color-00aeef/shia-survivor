@@ -380,8 +380,8 @@ const EVOLUTIONS = [
   { id: 'detention', emoji: '📏', name: '居残り結界',   core: 'bullet', passive: 'magnet', arch: 'teacher',
     material: 'チョーク増量Lv4＋回収範囲Lv2', desc: '敵の密集地に拘束フィールドを展開し、大幅スロー＋継続ダメージ' },
   // --- 以下は全職業共通の進化 ---
-  { id: 'bits',    emoji: '🛰️', name: '蒼銀ビット陣',   core: 'funnel', passive: 'firespeed',
-    material: 'ファンネルLv4＋弾速＆連射Lv2', desc: 'ファンネルの上位。ビットが増え、威力と射程が大幅に上昇' },
+  { id: 'funnelbeam', emoji: '🛰️', name: '光線ファンネル', core: 'funnel', passive: 'firespeed',
+    material: 'ファンネルLv4', desc: '両サイドの2機が弾から光線に。Lv8で溜め→太い光線を画面外まで放つ' },
   { id: 'scythe',  emoji: '🔨', name: '三連釘バット',   core: 'sweep', passive: 'firespeed',
     material: '薙ぎ払いLv4＋弾速＆連射Lv2', desc: '釘バットが3本になり、通常の薙ぎ払いと同じ挙動で三方向を薙ぐ' },
   { id: 'ward',    emoji: '🌸', name: '月影結界',       core: 'sweep', passive: 'hp',
@@ -1053,6 +1053,23 @@ function updateGunner(dt) {
   p.fireTimer = CONFIG.WEAPON.INTERVAL * p.intervalMult;
   const baseAngle = Math.atan2(target.y - p.y, target.x - p.x);
 
+  // 最終昇格（シア）：ソフィアのLv1球（薄青）を通常弾として撃つ（着弾分裂も乗る）
+  if (p.finalEvo.bullet) {
+    const n = p.bulletCount;
+    const spread = CONFIG.WEAPON.SPREAD_DEG * Math.PI / 180;
+    const speed = CONFIG.WEAPON.BULLET_SPEED * p.bulletSpeedMult;
+    for (let i = 0; i < n; i++) {
+      const a = baseAngle + (i - (n - 1) / 2) * spread;
+      S.bullets.push({
+        x: p.x, y: p.y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed,
+        dmg: CONFIG.WEAPON.DAMAGE * p.damageMult,
+        pierce: p.pierce, life: (range * 1.1) / speed,
+        radius: 12 * p.bulletSizeMult, hitSet: new Set(), orbStyle: true,
+      });
+    }
+    return;
+  }
+
   // 進化：拡散貫通ランス（正面扇状に3本の貫通ランス）
   if (p.evolvedCore.bullet === 'lance') {
     const speed = 460 * p.bulletSpeedMult;
@@ -1089,40 +1106,78 @@ function updateGunner(dt) {
 
 /* ===== 通常カード＆進化：ファンネル／蒼銀ビット陣 =====
  * funnel カードで取得・強化でき、進化(bits)で上位化する（両方ここで処理）。 */
+/* 点(px,py)と線分(ax,ay)-(bx,by)の最短距離 */
+function distToSegment(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  let t = len2 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
+}
+
+/* ファンネル：両サイドに2機を固定配置。Lv4で弾→光線、Lv8で溜め太光線 */
 function updateFunnels(dt) {
   const p = S.player;
   const lv = upLv('funnel');
-  const evolved = p.evolvedCore.funnel === 'bits';
-  if (lv <= 0 && !evolved) { p.bits.length = 0; return; }
-  // 数：通常は 1+lv（最大4）、進化で 3〜5
-  const count = evolved ? Math.min(5, 3 + Math.floor(p.level / 10)) : Math.min(4, 1 + lv);
-  const orbitR = evolved ? 88 : 74;
-  // ファンネルはLvで射程が伸びる（ソフィアの射程強化はここに統合）
-  const range = (evolved ? 340 : 230 + (lv - 1) * 34) * p.rangeMult;
-  const dmgMult = (evolved ? 1.1 : 0.55 + 0.12 * (lv - 1)); // Lvで威力UP
-  const fireInt = (evolved ? 0.55 : 0.85) * p.intervalMult;
-  const spin = evolved ? 2.6 : 2.0;
-  while (p.bits.length < count) p.bits.push({ phase: (Math.PI * 2 / count) * p.bits.length, fire: rnd(0, 0.5) });
-  if (p.bits.length > count) p.bits.length = count;
-  for (const b of p.bits) {
-    b.phase += dt * spin;
-    const bx = p.x + Math.cos(b.phase) * orbitR, by = p.y + Math.sin(b.phase) * orbitR;
-    b.x = bx; b.y = by; b.evolved = evolved;
+  if (lv <= 0) { p.bits.length = 0; return; }
+  const beam = !!p.evolvedCore.funnel;    // Lv4+：光線化
+  const finalBeam = !!p.finalEvo.funnel;  // Lv8：溜め太光線
+  const SIDE = 48;
+  const range = (beam ? 560 : 260 + (lv - 1) * 30) * p.rangeMult;
+  const dmgMult = (beam ? 1.25 : 0.6 + 0.12 * (lv - 1)) * (finalBeam ? 1.5 : 1);
+  const fireInt = (beam ? 0.5 : 0.8) * p.intervalMult;
+  // 常に2機、左右に固定
+  while (p.bits.length < 2) p.bits.push({ fire: rnd(0, 0.4), charge: rnd(1.5, 2.6) });
+  if (p.bits.length > 2) p.bits.length = 2;
+  for (let i = 0; i < 2; i++) {
+    const b = p.bits[i];
+    const side = i === 0 ? -1 : 1;
+    b.x = p.x + side * SIDE;
+    b.y = p.y - 4 + Math.sin(S.time * 3 + i * Math.PI) * 4; // 軽く上下ゆれ
+    b.evolved = beam; b.side = side;
+    // Lv8：溜め→太い光線を画面外まで（周期発動）
+    if (finalBeam) {
+      b.charge -= dt;
+      if (b.charge <= 0) {
+        b.charge = 2.8;
+        const t = nearestEnemy(b.x, b.y, 99999);
+        const ang = t ? Math.atan2(t.y - b.y, t.x - b.x) : (side < 0 ? Math.PI : 0);
+        fireFunnelBeam(b.x, b.y, ang, CONFIG.WEAPON.DAMAGE * p.damageMult * dmgMult * 2.2, true);
+      }
+    }
+    // 通常の攻撃（弾 or 光線）
     b.fire -= dt;
     if (b.fire <= 0) {
-      const target = nearestEnemy(bx, by, range);
-      if (target) {
-        b.fire = fireInt;
-        const a = Math.atan2(target.y - by, target.x - bx);
+      const t = nearestEnemy(b.x, b.y, range);
+      if (!t) { b.fire = 0.15; continue; }
+      b.fire = fireInt;
+      const ang = Math.atan2(t.y - b.y, t.x - b.x);
+      const dmg = CONFIG.WEAPON.DAMAGE * p.damageMult * dmgMult;
+      if (beam) {
+        fireFunnelBeam(b.x, b.y, ang, dmg, false);
+      } else {
         const speed = 360 * (p.bulletSpeedMult || 1);
-        S.bullets.push({
-          x: bx, y: by, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed,
-          dmg: CONFIG.WEAPON.DAMAGE * p.damageMult * dmgMult,
-          pierce: p.pierce, life: range / speed, radius: evolved ? 7 : 5, hitSet: new Set(),
-        });
-      } else { b.fire = 0.15; }
+        S.bullets.push({ x: b.x, y: b.y, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed,
+          dmg, pierce: p.pierce, life: range / speed, radius: 5, hitSet: new Set() });
+      }
     }
   }
+}
+
+/* 光線（ヒットスキャン）：始点から角度方向へ線を引き、線上の敵に一括ダメージ。ファンネル＆ソフィア最終昇格で共用 */
+function fireFunnelBeam(x, y, angle, dmg, big, color) {
+  const len = big ? Math.max(viewW, viewH) * 1.6 : (color === 'green' ? Math.max(viewW, viewH) * 1.3 : 460);
+  const thick = big ? 34 : 12;
+  const ex = x + Math.cos(angle) * len, ey = y + Math.sin(angle) * len;
+  for (const e of S.enemies) {
+    if (e.dead) continue;
+    if (distToSegment(e.x, e.y, x, y, ex, ey) <= thick + e.radius) {
+      damageEnemy(e, dmg, x, y, big ? 120 : 40);
+    }
+  }
+  S.enemies = S.enemies.filter(e => !e.dead);
+  S.effects.push({ kind: 'fbeam', x, y, angle, len, thick, t: big ? 0.28 : 0.14, maxT: big ? 0.28 : 0.14, big, color: color || 'blue' });
+  if (big) { S.shake = Math.max(S.shake, 6); SFX.boss && SFX.boss(); }
 }
 
 /* ===== ソフィア：緑の魔法球2つが左右逆回りで周回・貫通 ===== */
@@ -1170,6 +1225,18 @@ function updateMage(dt) {
   }
   // 進化：使い魔ビット＝自律する2体が敵を追って魔弾を撃つ
   if (p.evolvedCore.bullet === 'familiar') updateFamiliars(dt);
+  // 最終昇格（ソフィア）：球から外向きに画面外まで届く光線を定期発射
+  if (p.finalEvo.bullet) {
+    p.orbBeamTimer = (p.orbBeamTimer || 0) - dt;
+    if (p.orbBeamTimer <= 0) {
+      p.orbBeamTimer = 1.5;
+      for (const o of p.orbs) {
+        const ang = Math.atan2(o.y - p.y, o.x - p.x); // 球の外向き（周回で薙ぐ）
+        fireFunnelBeam(o.x, o.y, ang, CONFIG.WEAPON.DAMAGE * p.damageMult * 1.4, false, 'green');
+      }
+      SFX.hit();
+    }
+  }
 }
 
 function updateFamiliars(dt) {
@@ -2003,7 +2070,7 @@ function updateMeteor(dt) {
 function updateEffects(dt, visualOnly) {
   const nova = S.player && S.player.evolvedCore.shock === 'nova';
   for (const fx of S.effects) {
-    if (fx.kind === 'sweep' || fx.kind === 'boom' || fx.kind === 'railcharge' || fx.kind === 'railbeam' || fx.kind === 'evobeam' || fx.kind === 'magiccircle' || fx.kind === 'fanslash') {
+    if (fx.kind === 'sweep' || fx.kind === 'boom' || fx.kind === 'railcharge' || fx.kind === 'railbeam' || fx.kind === 'evobeam' || fx.kind === 'magiccircle' || fx.kind === 'fanslash' || fx.kind === 'fbeam') {
       if (fx.kind === 'boom') fx.r = fx.maxR * (1 - fx.t / fx.maxT); // 爆発の広がり演出
       fx.t -= dt;
       if (fx.t <= 0) fx.dead = true;
@@ -2437,12 +2504,56 @@ function drawPotionBullet(b) {
   drawEmoji('🧪', b.x, b.y - h, 20);
 }
 
+// 拡散貫通ランス：進行方向を向いた金属の槍
+function drawLance(b) {
+  const ang = Math.atan2(b.vy, b.vx);
+  const len = 30 + b.radius * 1.6, w = Math.max(4, b.radius * 0.85);
+  ctx.save();
+  ctx.translate(b.x, b.y);
+  ctx.rotate(ang);
+  // 尾のグロー
+  ctx.globalAlpha = 0.45;
+  const g = ctx.createLinearGradient(-len * 0.6, 0, len * 0.5, 0);
+  g.addColorStop(0, 'rgba(129,140,248,0)');
+  g.addColorStop(1, 'rgba(147,197,253,0.7)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.ellipse(-len * 0.1, 0, len * 0.7, w * 1.4, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = 1;
+  // 槍身（菱形の穂＋後方の柄）
+  ctx.fillStyle = '#cbd5ff';
+  ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(len * 0.55, 0);          // 穂先
+  ctx.lineTo(len * 0.1, -w);          // 肩（上）
+  ctx.lineTo(-len * 0.5, -w * 0.35);  // 柄尻（上）
+  ctx.lineTo(-len * 0.5, w * 0.35);   // 柄尻（下）
+  ctx.lineTo(len * 0.1, w);           // 肩（下）
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  // 中央の稜線ハイライト
+  ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(len * 0.55, 0); ctx.lineTo(-len * 0.45, 0); ctx.stroke();
+  // 穂先の光点
+  ctx.fillStyle = '#eef2ff';
+  ctx.beginPath(); ctx.arc(len * 0.55, 0, w * 0.45, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
 function drawBullets() {
   const entry = imageCache.get(BULLET_SPRITE);
   for (const b of S.bullets) {
     if (b.isSlash) { drawSlashBullet(b); continue; }
     if (b.isChalk) { drawChalkBullet(b); continue; }
     if (b.isPotion) { drawPotionBullet(b); continue; }
+    if (b.isLance) { drawLance(b); continue; }
+    if (b.orbStyle) { // 最終昇格の薄青オーブ弾（ソフィアのLv1球）
+      const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.radius * 1.9);
+      g.addColorStop(0, 'rgba(240,250,255,1)');
+      g.addColorStop(0.45, 'rgba(147,197,253,0.95)');
+      g.addColorStop(1, 'rgba(125,211,252,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(b.x, b.y, b.radius * 1.9, 0, Math.PI * 2); ctx.fill();
+      continue;
+    }
     if (b.isMagic) {
       // 使い魔の魔弾（緑）
       const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.radius * 2);
@@ -2680,6 +2791,22 @@ function drawEffects() {
       ctx.beginPath(); ctx.arc(rx, ry, size, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
       ctx.fillStyle = 'rgba(255,255,255,0.22)';
       ctx.beginPath(); ctx.arc(rx - size * 0.3, ry - size * 0.3, size * 0.34, 0, Math.PI * 2); ctx.fill();
+    } else if (fx.kind === 'fbeam') {
+      // 光線（太光線はさらに極太＋外側グロー）。色は青／緑
+      const a = Math.max(0, fx.t / fx.maxT);
+      const ex = fx.x + Math.cos(fx.angle) * fx.len, ey = fx.y + Math.sin(fx.angle) * fx.len;
+      const green = fx.color === 'green';
+      const outer = green ? 'rgba(134,239,172,0.55)' : 'rgba(125,211,252,0.55)';
+      const inner = green ? 'rgba(74,222,128,0.9)' : 'rgba(147,197,253,0.9)';
+      ctx.globalAlpha = a;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = outer; ctx.lineWidth = fx.thick * 2;
+      ctx.beginPath(); ctx.moveTo(fx.x, fx.y); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.strokeStyle = inner; ctx.lineWidth = fx.thick;
+      ctx.beginPath(); ctx.moveTo(fx.x, fx.y); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineWidth = Math.max(2, fx.thick * 0.35);
+      ctx.beginPath(); ctx.moveTo(fx.x, fx.y); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.globalAlpha = 1;
     } else if (fx.kind === 'railcharge') {
       // チャージ予告：伸びる細いガイド線＋点滅
       const a = 1 - fx.t / fx.maxT;
@@ -3458,7 +3585,7 @@ function firstEvoIdFor(weaponId, p) {
     const m = { gunner: 'lance', mage: 'orbnova', swordsman: 'crescentstorm', alchemist: 'chainflask', teacher: 'lecture' };
     return m[p.archetype] || 'lance';
   }
-  return { sweep: 'scythe', shock: 'nova', funnel: 'bits', meteor: 'meteorbig' }[weaponId] || null;
+  return { sweep: 'scythe', shock: 'nova', funnel: 'funnelbeam', meteor: 'meteorbig' }[weaponId] || null;
 }
 // 武器カードのLvが昇格ラインに達したら自動昇格
 function checkAutoEvolve(weaponId) {
@@ -3497,7 +3624,7 @@ function doEvolve(ev) {
   if (ev.id === 'railgun') p.railTimer = 2.0;
   if (ev.id === 'scythe') { p.scytheAngle = 0; p.scytheRingTimer = 2.0; }
   if (ev.id === 'ward') { p.wardTimer = 0.1; p.wardCharges = 0; }
-  if (ev.id === 'bits') p.bits = [];
+  if (ev.id === 'funnelbeam') p.bits = [];
   // 演出：暗転→魔法陣→バナー＋音＋ヒットストップ
   S.evoCinematic = { t: 1.1, name: ev.name, emoji: ev.emoji };
   SFX.evolve();
