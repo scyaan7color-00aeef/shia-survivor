@@ -1783,22 +1783,34 @@ function updateBullets(dt) {
   S.enemies = S.enemies.filter(e => !e.dead);
 }
 
-/* ===== 進化：旋回大鎌（常時回る鎌＋斬撃リング） ===== */
+/* 点(px,py)と線分(ax,ay)-(bx,by)の最短距離 */
+function distToSegment(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  let t = len2 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
+}
+
+/* ===== 進化：旋回（3本の棒が360°を薙ぐ＋斬撃リング） ===== */
+const SCYTHE = { REACH: 140, THICK: 26, POLES: 3, SPIN: 4.2 }; // 棒の長さ・太さ・本数・回転速度
 function updateScythe(dt) {
   const p = S.player;
   const baseLv = Math.max(1, upLv('sweep'));
   const dmg = CONFIG.SWEEP.DAMAGE_BASE * (1 + CONFIG.SWEEP.DAMAGE_PER_LV * (baseLv - 1));
-  const orbitR = 96, band = 42;
-  p.scytheAngle += dt * 3.4; // 旋回
-  // 0.22秒ごとに鎌の当たり判定帯にいる敵へダメージ
+  p.scytheAngle += dt * SCYTHE.SPIN; // 旋回（少し速め）
+  // 0.2秒ごとに、3本の棒（線分）上にいる敵へダメージ
   p.scytheTick -= dt;
   if (p.scytheTick <= 0) {
-    p.scytheTick = 0.22;
-    const bladeX = p.x + Math.cos(p.scytheAngle) * orbitR;
-    const bladeY = p.y + Math.sin(p.scytheAngle) * orbitR;
-    for (const e of S.enemies) {
-      if (Math.hypot(e.x - bladeX, e.y - bladeY) <= band + e.radius) {
-        damageEnemy(e, dmg * 0.5, p.x, p.y, 70);
+    p.scytheTick = 0.2;
+    for (let k = 0; k < SCYTHE.POLES; k++) {
+      const a = p.scytheAngle + k * (Math.PI * 2 / SCYTHE.POLES);
+      const tx = p.x + Math.cos(a) * SCYTHE.REACH, ty = p.y + Math.sin(a) * SCYTHE.REACH;
+      for (const e of S.enemies) {
+        if (e.dead) continue;
+        if (distToSegment(e.x, e.y, p.x, p.y, tx, ty) <= SCYTHE.THICK + e.radius) {
+          damageEnemy(e, dmg * 0.5, p.x, p.y, 70);
+        }
       }
     }
     S.enemies = S.enemies.filter(e => !e.dead);
@@ -2630,22 +2642,24 @@ function drawEvolvedWeapons() {
     ctx.fillStyle = g;
     ctx.beginPath(); ctx.arc(b.x, b.y, r, 0, Math.PI * 2); ctx.fill();
   }
-  // 旋回大鎌の進化＝緑の太い光線が360°を薙ぐ
+  // 旋回の進化＝緑の棒が3本、360°を薙ぐ（鎌なし・長め・少し速い回転）
   if (p.evolvedCore.sweep === 'scythe') {
-    const R = 112;
-    ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.scytheAngle);
-    const grad = ctx.createLinearGradient(0, 0, R, 0);
-    grad.addColorStop(0, 'rgba(134,239,172,0.95)');
-    grad.addColorStop(1, 'rgba(74,222,128,0)');
-    ctx.strokeStyle = grad; ctx.lineWidth = 13; ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(R, 0); ctx.stroke();
-    ctx.strokeStyle = 'rgba(240,255,240,0.9)'; ctx.lineWidth = 4;
-    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(R, 0); ctx.stroke();
+    const R = SCYTHE.REACH;
+    ctx.save(); ctx.translate(p.x, p.y);
+    for (let k = 0; k < SCYTHE.POLES; k++) {
+      ctx.save();
+      ctx.rotate(p.scytheAngle + k * (Math.PI * 2 / SCYTHE.POLES));
+      // 棒本体（緑）＋芯のハイライト
+      ctx.strokeStyle = 'rgba(74,222,128,0.95)'; ctx.lineWidth = 9; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(R, 0); ctx.stroke();
+      ctx.strokeStyle = 'rgba(240,255,240,0.9)'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(R, 0); ctx.stroke();
+      // 先端の光
+      ctx.fillStyle = 'rgba(190,255,190,0.95)';
+      ctx.beginPath(); ctx.arc(R, 0, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
     ctx.restore();
-    // 掃いた残像の弧
-    ctx.globalAlpha = 0.25; ctx.strokeStyle = '#4ade80'; ctx.lineWidth = 6;
-    ctx.beginPath(); ctx.arc(p.x, p.y, R * 0.9, p.scytheAngle - 1.3, p.scytheAngle); ctx.stroke();
-    ctx.globalAlpha = 1;
   }
   // 月影結界
   if (p.evolvedCore.sweep === 'ward' && p.wardCharges > 0) {
