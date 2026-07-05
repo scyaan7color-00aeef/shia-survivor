@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>シア・サバイバー</title>
-<link rel="stylesheet" href="style.css?v=12">
+<link rel="stylesheet" href="style.css?v=14">
 </head>
 <body>
   <!-- ゲーム描画キャンバス -->
@@ -48,6 +48,11 @@
       </p>
       <p class="subtitle">使うキャラを選ぼう</p>
       <div id="char-select"></div>
+      <p class="subtitle">モードを選ぼう</p>
+      <div id="mode-select">
+        <button class="mode-card" data-mode="timed"><span class="mode-name">⏱ 10分サバイバル</span><span class="mode-desc">10分耐久。残り2分でボスラッシュ→生き延びてクリア！</span></button>
+        <button class="mode-card" data-mode="endless"><span class="mode-name">♾️ エンドレス</span><span class="mode-desc">時間無制限。どこまで生き延びられるか腕試し</span></button>
+      </div>
       <p id="best-text" class="best"></p>
       <button id="start-btn" class="big-btn">ゲームスタート</button>
       <div id="title-btn-row">
@@ -189,7 +194,7 @@
   <!-- ゲームオーバー -->
   <div id="gameover-screen" class="overlay hidden">
     <div class="panel">
-      <h2>💀 ゲームオーバー</h2>
+      <h2 id="gameover-title">💀 ゲームオーバー</h2>
       <div id="result-stats"></div>
       <p id="stardust-gain" class="stardust-gain"></p>
       <p id="newrecord-text" class="record hidden"></p>
@@ -205,6 +210,6 @@
     </div>
   </div>
 
-  <script src="game.js?v=13"></script>
+  <script src="game.js?v=14"></script>
 </body>
 </html>

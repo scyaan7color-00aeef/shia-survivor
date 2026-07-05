@@ -363,6 +363,29 @@ html, body {
 .char-name { font-size: 15px; font-weight: bold; display: block; }
 .char-desc { font-size: 11px; color: #9fb0d0; line-height: 1.4; display: block; margin-top: 2px; }
 
+/* モード選択（10分サバイバル / エンドレス） */
+#mode-select {
+  display: flex; gap: 10px; justify-content: center;
+  flex-wrap: wrap; margin: 4px 0 6px;
+}
+.mode-card {
+  flex: 1 1 0; min-width: 150px; max-width: 230px;
+  display: flex; flex-direction: column; gap: 4px;
+  background: rgba(255,255,255,0.05);
+  border: 2px solid rgba(255,255,255,0.14);
+  border-radius: 12px; padding: 12px;
+  cursor: pointer; color: #e8ecf5; font-family: inherit; text-align: left;
+}
+.mode-card.selected {
+  border-color: #a78bfa;
+  background: rgba(167,139,250,0.16);
+  box-shadow: 0 0 12px rgba(167,139,250,0.45);
+}
+.mode-name { font-size: 15px; font-weight: bold; }
+.mode-desc { font-size: 11px; color: #9fb0d0; line-height: 1.4; }
+/* 10分モード終盤：残り時間の警告色 */
+#timer-text.time-warning { color: #fca5a5; }
+
 /* モンスター図鑑 */
 #dex-items { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
 .dex-row {

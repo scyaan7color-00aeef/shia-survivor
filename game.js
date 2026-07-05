@@ -8,6 +8,9 @@
 
 /* ===== 定数（ゲームバランスはここに集約） ===== */
 const CONFIG = {
+  // モード
+  RUN_DURATION: 600,       // 10分モードの制限時間（秒）＝到達でクリア
+  BOSS_RUSH_START: 480,    // 10分モードの終盤ボスラッシュ開始（残り2分＝8:00）
   // プレイヤー
   PLAYER: {
     BASE_HP: 100,
@@ -687,7 +690,7 @@ const ui = {
   skinPick: $('skin-pick'), skinToggle: $('skin-toggle'), skinClear: $('skin-clear'),
   skinClose: $('skin-close'), skinPreview: $('skin-preview'), skinStatus: $('skin-status'),
   skinHowtoBtn: $('skin-howto-btn'), skinHowto: $('skin-howto'), skinCopy: $('skin-copy'), skinPrompt: $('skin-prompt'),
-  gameoverScreen: $('gameover-screen'), resultStats: $('result-stats'),
+  gameoverScreen: $('gameover-screen'), gameoverTitle: $('gameover-title'), resultStats: $('result-stats'),
   newrecordText: $('newrecord-text'), retryBtn: $('retry-btn'), homeBtn: $('home-btn'),
   nameInput: $('name-input'), nameSave: $('name-save'), rankingGameover: $('ranking-gameover'),
   // 追加UI
@@ -698,7 +701,7 @@ const ui = {
   prestigeItems: $('prestige-items'), prestigeClose: $('prestige-close'),
   stardustText: $('stardust-text'), stardustGain: $('stardust-gain'),
   // キャラ選択
-  charSelect: $('char-select'),
+  charSelect: $('char-select'), modeSelect: $('mode-select'),
   // 追加GUI
   rankingBtn: $('ranking-btn'), rankingScreen: $('ranking-screen'),
   rankingFull: $('ranking-full'), rankingClose: $('ranking-close'),
@@ -726,6 +729,8 @@ resizeCanvas();
 const S = {
   mode: 'title', // 'title' | 'playing' | 'levelup' | 'paused' | 'gameover'
   selectedCharacter: 'shia', // 選択中のキャラ
+  gameMode: 'timed', // 'timed'（10分サバイバル） | 'endless'（無制限）
+  won: false,        // 直近ランがクリア（時間到達）だったか
   time: 0,       // 生存時間（秒）
   kills: 0,
   coins: 0,
@@ -1005,8 +1010,24 @@ function updateSpawning(dt) {
       S.banner = { text: '⚠️ エリート出現！', t: 2.0 };
     }
   }
-  // ボスラッシュ：4分半以降、過去のボスが“通常敵”として複数出現（HP控えめ・技なし・ゾーン非進行）
-  if (S.time > 270) {
+  // 10分モードの終盤2分：ボスラッシュ＝本物のボス級が常時2体（倒すと即補充）
+  if (S.gameMode === 'timed' && S.time >= CONFIG.BOSS_RUSH_START) {
+    if (!S.finaleAnnounced) {
+      S.finaleAnnounced = true;
+      S.banner = { text: '💀💀 最終ボスラッシュ！ 💀💀', t: 3.0 };
+      SFX.boss();
+    }
+    const finaleAlive = S.enemies.filter(e => e.finaleBoss && !e.dead).length;
+    if (finaleAlive < 2) {
+      const bossType = BOSS_TYPES[S.bossSpawnCount % BOSS_TYPES.length];
+      S.bossSpawnCount += 1;
+      const boss = spawnEnemy(bossType);
+      boss.finaleBoss = true;
+      SFX.boss();
+    }
+  }
+  // エンドレスのボスラッシュ：4分半以降、過去のボスが“通常敵”として複数出現（HP控えめ・技なし・ゾーン非進行）
+  if (S.gameMode === 'endless' && S.time > 270) {
     S.bossRushTimer += dt;
     if (S.bossRushTimer >= 55) {
       S.bossRushTimer = 0;
@@ -1182,6 +1203,22 @@ function fireFunnelBeam(x, y, angle, dmg, big, color) {
   if (big) { S.shake = Math.max(S.shake, 6); SFX.boss && SFX.boss(); }
 }
 
+/* ソフィア最終昇格の光線：球を起点に「ソフィア→球」の外向きへ太く画面外まで。
+ * 球が周回するので毎回の発射位置がずれ、結果として薙ぎ払いになる。 */
+function fireOrbBeam(o, dmg) {
+  const p = S.player;
+  const ang = Math.atan2(o.y - p.y, o.x - p.x);   // ソフィア中心の放射方向
+  const len = Math.max(viewW, viewH) * 2.2;        // 画面外まで確実に届く
+  const thick = 19;                                // 太い光線
+  const ex = o.x + Math.cos(ang) * len, ey = o.y + Math.sin(ang) * len;
+  for (const e of S.enemies) {
+    if (e.dead) continue;
+    if (distToSegment(e.x, e.y, o.x, o.y, ex, ey) <= thick + e.radius) damageEnemy(e, dmg, o.x, o.y, 24);
+  }
+  S.enemies = S.enemies.filter(e => !e.dead);
+  S.effects.push({ kind: 'fbeam', x: o.x, y: o.y, angle: ang, len, thick, t: 0.14, maxT: 0.14, big: false, color: 'green' });
+}
+
 /* ===== ソフィア：緑の魔法球2つが左右逆回りで周回・貫通 ===== */
 function updateOrbs(dt) {
   const p = S.player;
@@ -1227,29 +1264,13 @@ function updateMage(dt) {
   }
   // 進化：使い魔ビット＝自律する2体が敵を追って魔弾を撃つ
   if (p.evolvedCore.bullet === 'familiar') updateFamiliars(dt);
-  // 最終昇格（ソフィア）：球から六方向へ光線を放ち、回転しながら一時的に薙ぎ払う
+  // 最終昇格（ソフィア）：各球から「ソフィア→球」の外向きに太い光線を画面外まで放つ。
+  // 球は常に周回しているので、光線も一緒に回って自然に薙ぎ払いになる（球とソフィアの間には光線なし）。
   if (p.finalEvo.bullet) {
     p.orbBeamTimer = (p.orbBeamTimer || 0) - dt;
-    // 薙ぎ払い中：基準角をゆっくり回しつつ、周期的に各球から6方向へ発射
-    if (p.orbSweep && p.orbSweep.t > 0) {
-      p.orbSweep.t -= dt;
-      p.orbSweep.angle += dt * 5.2;            // 回転＝薙ぎ払い感
-      p.orbSweep.fireCd -= dt;
-      if (p.orbSweep.fireCd <= 0) {
-        p.orbSweep.fireCd = 0.1;               // 連続発射で薙いでいるように見せる
-        for (const o of p.orbs) {
-          for (let k = 0; k < 6; k++) {
-            const ang = p.orbSweep.angle + k * (Math.PI / 3); // 60°刻みの六方向
-            fireFunnelBeam(o.x, o.y, ang, CONFIG.WEAPON.DAMAGE * p.damageMult * 1.05, false, 'green');
-          }
-        }
-      }
-    }
-    // 一定周期で薙ぎ払いを起動
     if (p.orbBeamTimer <= 0) {
-      p.orbBeamTimer = 2.4;
-      p.orbSweep = { t: 0.42, fireCd: 0, angle: Math.random() * Math.PI };
-      SFX.hit();
+      p.orbBeamTimer = 0.1; // 球の現在位置で連続射（0.1秒毎）＝周回に追従して薙ぐ
+      for (const o of p.orbs) fireOrbBeam(o, CONFIG.WEAPON.DAMAGE * p.damageMult * 0.7);
     }
   }
 }
@@ -3081,7 +3102,15 @@ function updateHud() {
   ui.hpText.textContent = `${Math.ceil(p.hp)} / ${p.maxHp}`;
   ui.xpbar.style.width = `${Math.min(100, p.xp / xpToNext(p.level) * 100)}%`;
   ui.levelText.textContent = `Lv ${p.level}`;
-  ui.timerText.textContent = formatTime(S.time);
+  // 10分モードは残り時間のカウントダウン、エンドレスは経過時間
+  if (S.gameMode === 'timed') {
+    const remain = Math.max(0, CONFIG.RUN_DURATION - S.time);
+    ui.timerText.textContent = formatTime(remain);
+    ui.timerText.classList.toggle('time-warning', remain <= 120); // 残り2分で警告色
+  } else {
+    ui.timerText.textContent = formatTime(S.time);
+    ui.timerText.classList.remove('time-warning');
+  }
   ui.coinText.textContent = `🪙 ${S.coins}`;
   ui.killText.textContent = `💥 ${S.kills}`;
 }
@@ -3301,6 +3330,19 @@ function renderCharSelect() {
   if (needRedraw && S.mode === 'title') setTimeout(renderCharSelect, 250);
 }
 
+// モード選択（10分サバイバル / エンドレス）
+function renderModeSelect() {
+  if (!ui.modeSelect) return;
+  for (const btn of ui.modeSelect.querySelectorAll('.mode-card')) {
+    const m = btn.dataset.mode;
+    btn.classList.toggle('selected', S.gameMode === m);
+    if (!btn._bound) {
+      btn._bound = true;
+      btn.addEventListener('click', () => { S.gameMode = m; SFX.resume(); renderModeSelect(); });
+    }
+  }
+}
+
 /* ===== ランキング確認画面 ===== */
 function showRankingView() {
   if (!ui.rankingScreen) return;
@@ -3369,6 +3411,7 @@ function hideHistory() { if (ui.historyScreen) ui.historyScreen.classList.add('h
 function showTitle() {
   S.mode = 'title';
   renderCharSelect();
+  renderModeSelect();
   const ranks = loadRanks();
   ui.bestText.textContent = ranks.length
     ? `🏆 最高スコア：${ranks[0].score}（${escapeHtml(ranks[0].name)}）`
@@ -3389,6 +3432,7 @@ function startGame() {
   S.time = 0; S.kills = 0; S.coins = 0; S.bossKills = 0;
   S.zone = 0; S.bossRushTimer = 0;
   S.spawnTimer = 0.5; S.bossTimer = 0;
+  S.won = false; S.finaleAnnounced = false; // モード関連リセット
   S.hitStop = 0; S.evoCinematic = null; S.banishMode = false;
   S.player = createPlayer();
   S.enemies = []; S.bullets = []; S.pickups = []; S.particles = []; S.effects = [];
@@ -3733,12 +3777,18 @@ function togglePause() {
 /* --- ゲームオーバー --- */
 let lastRecord = null; // 直近の記録（名前編集で再保存するため保持）
 
-function gameOver() {
+function gameClear() { gameOver(true); }
+
+function gameOver(won = false) {
+  if (S.mode === 'gameover') return; // 二重発火防止（クリア直後の敵接触など）
   S.mode = 'gameover';
+  S.won = won;
   const p = S.player;
   const score = computeScore({ time: S.time, kills: S.kills, level: p.level });
-  // 星屑（転生通貨）を付与＝周回で強くなる
-  const dustGain = computeStardust(S.coins, S.time, S.bossKills);
+  // 星屑（転生通貨）を付与＝周回で強くなる。クリアはボーナス1.3倍
+  let dustGain = computeStardust(S.coins, S.time, S.bossKills);
+  if (won) dustGain = Math.round(dustGain * 1.3);
+  if (ui.gameoverTitle) ui.gameoverTitle.textContent = won ? '🎉 クリア！' : '💀 ゲームオーバー';
   saveStardust(loadStardust() + dustGain);
   // プレイ履歴を保存（時系列）
   pushHistory({
@@ -3746,10 +3796,13 @@ function gameOver() {
     charName: (CHARACTERS[p.character] || {}).name || p.character,
     time: Math.round(S.time), kills: S.kills, level: p.level,
     zone: S.zone, zoneName: (ZONES[S.zone] || {}).name || '', dust: dustGain,
-    score, at: new Date().toISOString(),
+    score, at: new Date().toISOString(), mode: S.gameMode, won,
   });
-  if (ui.stardustGain) ui.stardustGain.textContent = `✨ 獲得星屑：+${dustGain}（累計 ${loadStardust()}）`;
+  if (ui.stardustGain) ui.stardustGain.textContent = `✨ 獲得星屑：+${dustGain}${won ? '（クリアボーナス込）' : ''}（累計 ${loadStardust()}）`;
+  const modeLabel = S.gameMode === 'timed' ? '⏱ 10分サバイバル' : '♾️ エンドレス';
   ui.resultStats.innerHTML = `
+    ${won ? '<b>🎉 10分を生き延びた！</b><br>' : ''}
+    🎮 モード：<b>${modeLabel}</b><br>
     🎯 スコア：<b>${score}</b><br>
     ⏱ 生存時間：<b>${formatTime(S.time)}</b><br>
     💥 撃破数：<b>${S.kills}</b>体（ボス ${S.bossKills}）<br>
@@ -3762,6 +3815,7 @@ function gameOver() {
     name: getPlayerName(),
     time: S.time, kills: S.kills, level: p.level, score,
     date: new Date().toISOString().slice(0, 10),
+    mode: S.gameMode, won,
   };
   const result = submitScore(lastRecord);
 
@@ -3966,7 +4020,8 @@ function tick(now) {
 
   if (S.mode === 'playing') {
     S.time += dt;
-    updatePlayer(dt);
+    if (S.gameMode === 'timed' && S.time >= CONFIG.RUN_DURATION) gameClear(); // 10分到達＝クリア
+    if (S.mode === 'playing') updatePlayer(dt);
     if (S.mode === 'playing') { // updatePlayer中にgameOverはしない（敵接触で判定）
       updateSpawning(dt);
       updateEnemies(dt);
