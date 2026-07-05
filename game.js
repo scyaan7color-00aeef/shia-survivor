@@ -3500,10 +3500,28 @@ function handleFeedbackSend() {
 }
 
 /* ===== ボタン類 ===== */
+/* HUD内ボタン（ゲーム中に表示＝プレイ中に押す）用のタップ束縛。
+ * ★モバイル多点タッチ対策：移動でジョイスティックを掴んでいる指がある状態で
+ *   別の指でHUDボタンを押すと、その“2本目の指”では click が合成されず反応しない。
+ *   そこで touchstart でも発火させ、合成clickの二重発火は preventDefault で抑止する。 */
+function bindHudTap(el, fn) {
+  if (!el) return;
+  let touched = false;
+  el.addEventListener('touchstart', (e) => {
+    touched = true;
+    if (e.cancelable) e.preventDefault(); // 合成clickを抑止（二重発火防止）
+    e.stopPropagation();                   // ジョイスティック等へ伝播させない
+    fn();
+  }, { passive: false });
+  el.addEventListener('click', () => {
+    if (touched) { touched = false; return; } // touchで処理済みなら無視
+    fn();
+  });
+}
 ui.startBtn.addEventListener('click', startGame);
 ui.retryBtn.addEventListener('click', startGame);
 ui.resumeBtn.addEventListener('click', togglePause);
-ui.pauseBtn.addEventListener('click', () => { if (S.mode === 'playing' || S.mode === 'paused') togglePause(); });
+bindHudTap(ui.pauseBtn, () => { if (S.mode === 'playing' || S.mode === 'paused') togglePause(); });
 if (ui.nameSave) ui.nameSave.addEventListener('click', saveNameAndUpdate);
 if (ui.nameInput) ui.nameInput.addEventListener('change', saveNameAndUpdate);
 if (ui.prestigeBtn) ui.prestigeBtn.addEventListener('click', showPrestige);
@@ -3524,7 +3542,7 @@ if (ui.historyBtn) ui.historyBtn.addEventListener('click', showHistory);
 if (ui.historyClose) ui.historyClose.addEventListener('click', hideHistory);
 // ゲームオーバー→ホーム（タイトル）へ戻る
 if (ui.homeBtn) ui.homeBtn.addEventListener('click', () => { ui.gameoverScreen.classList.add('hidden'); showTitle(); });
-if (ui.sfxToggle) ui.sfxToggle.addEventListener('click', () => { SFX.toggle(); refreshSfxButtons(); });
+bindHudTap(ui.sfxToggle, () => { SFX.toggle(); refreshSfxButtons(); }); // ゲーム中の音量ボタンも多点タッチ対策
 if (ui.sfxToggleTitle) ui.sfxToggleTitle.addEventListener('click', () => { SFX.toggle(); refreshSfxButtons(); });
 
 /* =========================================================
