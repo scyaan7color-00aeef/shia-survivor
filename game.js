@@ -114,7 +114,10 @@ const CONFIG = {
   PRESTIGE_KEY: 'cyanissimo_survivor_prestige_v1', // 恒久強化の取得段数
   HISTORY_KEY: 'cyanissimo_survivor_history_v1',   // プレイ履歴（時系列）
   HISTORY_MAX: 15,           // 履歴の保持件数
-  EVO_EVERY_LEVELS: 4,       // 進化（昇格）候補を出すレベル間隔（Lv4/8/12…）
+  EVO_EVERY_LEVELS: 4,       // （旧）進化候補の提示間隔。新・自動昇格では未使用
+  EVO_LV1: 4,                // 第1昇格：武器カードがこのLvで自動昇格
+  EVO_LV2: 8,                // 最終昇格：武器カードがこのLvで自動最終昇格
+  FINAL_MULT: 1.5,           // 最終昇格の威力倍率（Lv8）
   SFX_KEY: 'cyanissimo_survivor_sfx',              // 効果音ON/OFF
   FEEDBACK_KEY: 'cyanissimo_survivor_feedback_v1', // フィードバック（ローカル保存＋Googleフォーム送信）
   FEEDBACK_FORM_URL: 'https://docs.google.com/forms/d/e/1FAIpQLSfgaZPdV1Qavr-BABAamBR41MleNkEdvfe1f94zzLZNZoi1eQ/formResponse', // Googleフォーム回答エンドポイント
@@ -288,16 +291,15 @@ const BULLET_SPRITE = 'assets/bullet.png';
  * archs = 提示する職業を限定（貫通=射手のみ 等） */
 const UPGRADE_POOL = [
   // --- 弾/球コア（職業で効果が変わる中核カード） ---
-  { id: 'bullet', emoji: '⚔️', name: '弾強化', max: 6,
-    desc: '攻撃力+20%、弾を1発追加（2回目以降は弾も大きくなる）',
+  { id: 'bullet', emoji: '⚔️', name: '弾強化', max: 8,
+    desc: '攻撃力+20%、弾を1発追加、弾速＆連射も上昇（Lv4で昇格・Lv8で最終昇格）',
     apply: p => {
       const taken = p.upgradeLevels['bullet'] || 0; // 適用前のLv（0=1回目）
       p.damageMult *= 1.20;
+      p.intervalMult *= 0.92;            // 連射（旧・弾速＆連射カードを統合）
       archOf(p).applyBullet(p, taken);
+      archOf(p).applyFirespeed(p);       // 弾速（旧・弾速＆連射カードを統合）
     } },
-  { id: 'firespeed', emoji: '⚡', name: '弾速＆連射', max: 6,
-    desc: '弾速+15%、攻撃間隔−10%',
-    apply: p => { p.intervalMult *= 0.90; archOf(p).applyFirespeed(p); } },
   { id: 'split', emoji: '✨', name: '着弾分裂', max: 5,
     desc: '弾が着弾時に破片へ分裂する（弾数を引き継ぐ）',
     apply: p => { archOf(p).applySplit(p); } },
@@ -305,15 +307,15 @@ const UPGRADE_POOL = [
     desc: 'すべての弾が敵を貫通するようになる（1回のみ）',
     apply: p => { p.pierce = 999; } },
   // --- 追加武器（多段強化・取得すると新しい攻撃が増える） ---
-  { id: 'funnel', emoji: '🛰️', name: 'ファンネル', max: 5,
-    desc: '周囲を回る援護ビットが敵を自動で撃つ（Lvで数・威力・射程が上昇）',
+  { id: 'funnel', emoji: '🛰️', name: 'ファンネル', max: 8,
+    desc: '両サイドに固定した援護ビットが弾を撃つ（Lv4で光線・Lv8で溜め太光線に昇格）',
     apply: p => {} },
-  { id: 'sweep', emoji: '🌀', name: '薙ぎ払い', max: 6,
-    desc: '釘バットを反時計回りに振る近接攻撃（Lv3で2連撃・Lv5で二刀＆各2連撃）', apply: p => {} },
-  { id: 'shock', emoji: '💥', name: '衝撃波', max: 6,
-    desc: '周囲へ衝撃波リングを放つ（Lvで範囲と威力が上昇）', apply: p => {} },
-  { id: 'meteor', emoji: '🪨', name: '落石', max: 6,
-    desc: '空から岩が降り、着弾点に範囲ダメージ（Lvで数・威力・範囲が上昇。進化で隕石）', apply: p => {} },
+  { id: 'sweep', emoji: '🌀', name: '薙ぎ払い', max: 8,
+    desc: '釘バットを振る近接攻撃（Lv4で釘バット3本に昇格・Lv8で最終昇格）', apply: p => {} },
+  { id: 'shock', emoji: '💥', name: '衝撃波', max: 8,
+    desc: '周囲へ衝撃波リングを放つ（Lv4で連鎖星爆・Lv8で最終昇格）', apply: p => {} },
+  { id: 'meteor', emoji: '🪨', name: '落石', max: 8,
+    desc: '空から岩が降り着弾点に範囲ダメージ（Lv4で隕石・Lv8で最終昇格）', apply: p => {} },
   // --- パッシブ ---
   { id: 'range',  emoji: '🔭', name: '射程アップ',     desc: '弾・ビットの射程+15%',    max: 6, apply: p => { p.rangeMult *= 1.15; } },
   { id: 'speed',  emoji: '👟', name: '移動速度アップ', desc: '移動速度+10%',            max: 6, apply: p => { p.moveSpeedMult *= 1.10; } },
@@ -791,7 +793,8 @@ function createPlayer() {
     // 進化状態
     evolutions: {},         // 進化ID → true
     evoCount: 0,            // 進化した回数
-    evolvedCore: { bullet: null, sweep: null, shock: null, funnel: null, meteor: null }, // コアごとの進化先
+    evolvedCore: { bullet: null, sweep: null, shock: null, funnel: null, meteor: null }, // 第1昇格（コアごとの進化先）
+    finalEvo: { bullet: false, sweep: false, shock: false, funnel: false, meteor: false }, // 最終昇格（Lv8）フラグ
     // 進化武器の内部状態
     bits: [],               // ファンネル／蒼銀ビット
     railTimer: 3, railCharge: 0, railAngle: 0,
@@ -1922,7 +1925,7 @@ function updateSweep(dt) {
 function performSweepSwing(center, lv) {
   const p = S.player;
   const radius = CONFIG.SWEEP.RADIUS_BASE * (1 + CONFIG.SWEEP.RADIUS_PER_LV * (lv - 1));
-  const dmg = CONFIG.SWEEP.DAMAGE_BASE * (1 + CONFIG.SWEEP.DAMAGE_PER_LV * (lv - 1));
+  const dmg = CONFIG.SWEEP.DAMAGE_BASE * (1 + CONFIG.SWEEP.DAMAGE_PER_LV * (lv - 1)) * finalMult('sweep');
   const half = CONFIG.SWEEP.ARC_DEG * Math.PI / 180 / 2;
   // 扇内の敵にダメージ＋ノックバック（釘バットの打撃）
   let hitCount = 0;
@@ -1950,8 +1953,10 @@ function updateShock(dt) {
   if (p.shockTimer > 0) return;
   p.shockTimer = CONFIG.SHOCK.INTERVAL_BASE * Math.pow(CONFIG.SHOCK.INTERVAL_MULT, lv - 1);
 
-  const maxR = CONFIG.SHOCK.MAX_RADIUS_BASE * (1 + CONFIG.SHOCK.MAX_RADIUS_PER_LV * (lv - 1));
-  const dmg = CONFIG.SHOCK.DAMAGE_BASE * (1 + CONFIG.SHOCK.DAMAGE_PER_LV * (lv - 1));
+  // 連鎖星爆（nova）は範囲を広めに。最終昇格でさらに拡大
+  const novaWide = p.evolvedCore.shock === 'nova' ? 1.5 : 1;
+  const maxR = CONFIG.SHOCK.MAX_RADIUS_BASE * (1 + CONFIG.SHOCK.MAX_RADIUS_PER_LV * (lv - 1)) * novaWide * (p.finalEvo.shock ? 1.25 : 1);
+  const dmg = CONFIG.SHOCK.DAMAGE_BASE * (1 + CONFIG.SHOCK.DAMAGE_PER_LV * (lv - 1)) * finalMult('shock');
   S.effects.push({ kind: 'shock', x: p.x, y: p.y, r: 0, maxR, dmg, speed: CONFIG.SHOCK.SPEED, hitSet: new Set() });
   p.actionAnim = 'jumping'; p.actionTimer = 0.3; p.animTime = 0;
   S.shake = Math.max(S.shake, 4);
@@ -1979,8 +1984,8 @@ function updateMeteor(dt) {
   if (p.meteorTimer > 0) return;
   const evolved = p.evolvedCore.meteor === 'meteorbig';
   p.meteorTimer = CONFIG.METEOR.INTERVAL_BASE * Math.pow(CONFIG.METEOR.INTERVAL_MULT, lv - 1) * (evolved ? 1.15 : 1);
-  const dmg = CONFIG.METEOR.DAMAGE_BASE * (1 + CONFIG.METEOR.DAMAGE_PER_LV * (lv - 1));
-  const rad = CONFIG.METEOR.RADIUS_BASE * (1 + CONFIG.METEOR.RADIUS_PER_LV * (lv - 1));
+  const dmg = CONFIG.METEOR.DAMAGE_BASE * (1 + CONFIG.METEOR.DAMAGE_PER_LV * (lv - 1)) * finalMult('meteor');
+  const rad = CONFIG.METEOR.RADIUS_BASE * (1 + CONFIG.METEOR.RADIUS_PER_LV * (lv - 1)) * (p.finalEvo.meteor ? 1.2 : 1);
   if (evolved) {
     // 隕石：特大の一撃＋周囲に小落石
     spawnMeteor(meteorTarget(p), dmg * 3.2, rad * 2.0, 1.1, true);
@@ -2014,8 +2019,9 @@ function updateEffects(dt, visualOnly) {
           damageEnemy(e, fx.dmg, fx.x, fx.y, CONFIG.SHOCK.KNOCK);
           // 進化：連鎖星爆（衝撃波で倒すと敵の位置に魔法陣が発火＋小爆発が連鎖）
           if (nova && e.dead) {
-            S.effects.push({ kind: 'magiccircle', x: e.x, y: e.y, r: 46, t: 0.5, maxT: 0.5 });
-            explodeAt(e.x, e.y, 80, fx.dmg * 0.8, 4, 100);
+            const nf = S.player.finalEvo.shock ? 1.3 : 1; // 最終昇格でさらに広範囲
+            S.effects.push({ kind: 'magiccircle', x: e.x, y: e.y, r: 68 * nf, t: 0.5, maxT: 0.5 });
+            explodeAt(e.x, e.y, 130 * nf, fx.dmg * 0.9, 5, 120); // 連鎖星爆＝範囲拡大（46→68/80→130）
           }
         }
       }
@@ -3016,22 +3022,19 @@ function escapeHtml(s) {
 function updateWeaponBar() {
   if (!ui.weaponBar || !S.player) return;
   const p = S.player;
-  const evoAvail = availableEvolutions();
-  const glowCores = new Set(evoAvail.map(ev => ev.core));      // 光らせるコアID
-  const glowPass = new Set(evoAvail.map(ev => ev.passive));
   let html = '';
-  // 進化済みの武器
+  // 第1昇格済みの武器（進化アイコン）
   for (const id of Object.keys(p.evolutions)) {
     const ev = EVOLUTIONS.find(e => e.id === id);
     if (ev) html += `<span class="wb-icon wb-evo" title="${ev.name}">${ev.emoji}</span>`;
   }
-  // 取得中の強化（Lv付き）
+  // 取得中の強化（Lv付き）。次のLvで昇格する武器は光らせる
   for (const u of UPGRADE_POOL) {
     const lv = p.upgradeLevels[u.id] || 0;
     if (lv <= 0) continue;
-    if (EVO_GROUP[u.id] && p.evolvedCore[EVO_GROUP[u.id]]) continue; // 進化済みコアは非表示
-    const glow = glowCores.has(u.id) || glowPass.has(u.id) ? ' wb-glow' : '';
-    html += `<span class="wb-icon${glow}" title="${u.name}">${u.emoji}<b>${lv}</b></span>`;
+    const core = EVO_GROUP[u.id];
+    const nearEvo = core && ((lv === CONFIG.EVO_LV1 - 1 && !p.evolvedCore[core]) || (lv === CONFIG.EVO_LV2 - 1 && !p.finalEvo[core]));
+    html += `<span class="wb-icon${nearEvo ? ' wb-glow' : ''}" title="${u.name}">${u.emoji}<b>${lv}</b></span>`;
   }
   ui.weaponBar.innerHTML = html;
 }
@@ -3316,14 +3319,9 @@ function isEvolutionLevel() {
 }
 
 function buildLevelChoices() {
-  const CHOICES = 4; // レベルアップの選択肢は4択（2026-07-04 3択→4択）
+  const CHOICES = 4; // レベルアップの選択肢は4択
+  // 昇格は自動化（武器がLv4/Lv8で自動昇格）。ここでは通常強化のみを提示する
   const cards = [];
-  if (isEvolutionLevel()) {
-    const evos = availableEvolutions().sort(() => Math.random() - 0.5);
-    // 進化研究Lv1以上で出現率アップ（=最大2枠まで進化提示）
-    const evoSlots = prestigeLv('evo') >= 1 ? 2 : 1;
-    for (const ev of evos) { cards.push({ kind: 'evo', ev }); if (cards.length >= evoSlots) break; }
-  }
   for (const u of pickUpgradeChoices()) { if (cards.length >= CHOICES) break; cards.push({ kind: 'up', up: u }); }
   return cards.slice(0, CHOICES);
 }
@@ -3441,6 +3439,7 @@ function chooseCard(c) {
   else {
     c.up.apply(p);
     p.upgradeLevels[c.up.id] = (p.upgradeLevels[c.up.id] || 0) + 1;
+    checkAutoEvolve(c.up.id); // 武器コアがLv4/Lv8に達したら自動で昇格
   }
   // 余剰XPで連続レベルアップ
   if (p.xp >= xpToNext(p.level)) {
@@ -3451,6 +3450,42 @@ function chooseCard(c) {
   }
   resumeFromLevelUp();
 }
+
+/* ===== 自動昇格（A：武器カードのLvだけで昇格。パッシブ不要・カード選択なし） ===== */
+// 各武器コアの第1昇格ID（弾はアーキタイプ別）
+function firstEvoIdFor(weaponId, p) {
+  if (weaponId === 'bullet') {
+    const m = { gunner: 'lance', mage: 'orbnova', swordsman: 'crescentstorm', alchemist: 'chainflask', teacher: 'lecture' };
+    return m[p.archetype] || 'lance';
+  }
+  return { sweep: 'scythe', shock: 'nova', funnel: 'bits', meteor: 'meteorbig' }[weaponId] || null;
+}
+// 武器カードのLvが昇格ラインに達したら自動昇格
+function checkAutoEvolve(weaponId) {
+  const p = S.player;
+  const core = EVO_GROUP[weaponId];
+  if (!core) return; // パッシブ等は対象外
+  const lv = p.upgradeLevels[weaponId] || 0;
+  if (lv >= CONFIG.EVO_LV1 && !p.evolvedCore[core]) {
+    const ev = EVOLUTIONS.find(e => e.id === firstEvoIdFor(weaponId, p));
+    if (ev) doEvolve(ev);
+  }
+  if (lv >= CONFIG.EVO_LV2 && !p.finalEvo[core]) {
+    doFinalEvolve(weaponId, core);
+  }
+}
+// 最終昇格（Lv8）＝第1昇格の強化版。威力UP（＋弾は弾数UP）
+function doFinalEvolve(weaponId, core) {
+  const p = S.player;
+  p.finalEvo[core] = true;
+  if (weaponId === 'bullet') { p.damageMult *= CONFIG.FINAL_MULT; archOf(p).applyBullet(p, 99); } // 弾は威力＆弾数UP
+  const name = ({ bullet: '弾', sweep: '薙ぎ払い', shock: '衝撃波', funnel: 'ファンネル', meteor: '落石' })[weaponId] || weaponId;
+  S.evoCinematic = { t: 1.2, name: name + '・最終昇格', emoji: '🌟' };
+  SFX.evolve(); hitStop(90); S.shake = Math.max(S.shake, 10);
+  S.banner = { text: `🌟 ${name} 最終昇格！ 🌟`, t: 2.4 };
+}
+// 最終昇格の威力倍率（各武器の更新で使う）
+function finalMult(core) { return S.player.finalEvo[core] ? CONFIG.FINAL_MULT : 1; }
 
 // 進化を実行（元Lv引き継ぎ・コア消費・演出）
 function doEvolve(ev) {
