@@ -300,7 +300,7 @@ const UPGRADE_POOL = [
       archOf(p).applyBullet(p, taken);
       archOf(p).applyFirespeed(p);       // 弾速（旧・弾速＆連射カードを統合）
     } },
-  { id: 'split', emoji: '✨', name: '着弾分裂', max: 5,
+  { id: 'split', emoji: '✨', name: '着弾分裂', max: 4,
     desc: '弾が着弾時に破片へ分裂する（弾数を引き継ぐ）',
     apply: p => { archOf(p).applySplit(p); } },
   { id: 'pierce', emoji: '🏹', name: '貫通', max: 1, archs: ['gunner'],
@@ -519,6 +519,8 @@ const ZONES = [
   { name: '緋色の荒野', bg: '#2a1418', grid: 'rgba(255,150,150,0.08)', img: 'assets/bg_zone4.png' },
   { name: '蒼氷の海',   bg: '#0d1e2b', grid: 'rgba(120,210,255,0.08)', img: 'assets/bg_zone5.png' },
   { name: '黄昏の砂丘', bg: '#241f10', grid: 'rgba(255,220,120,0.08)', img: 'assets/bg_zone6.png' },
+  { name: '幽玄の竹林', bg: '#0e1c14', grid: 'rgba(160,255,190,0.07)', img: 'assets/bg_zone7.png' }, // 追加（画像はCodex待ち・無ければ手続き背景）
+  { name: '星海の深淵', bg: '#0a0e22', grid: 'rgba(150,170,255,0.09)', img: 'assets/bg_zone8.png' },
 ];
 
 /* ===== 転生（プレステージ）恒久強化ツリー =====
@@ -1902,9 +1904,11 @@ function updateBullets(dt) {
     if (b.life <= 0) {
       b.dead = true;
       if (b.isPotion) potionLand(b);                                  // ポーションは狙った地点で爆発
-      else if (b.explodeOnEnd) explodeAt(b.x, b.y, 70, b.dmg * 0.9, 0, 120); // ランス着弾の小爆発
-      // 貫通弾（貫通カード取得後）も、敵に触れていれば射程の切れ目で分裂する
-      else if (b.hitAny && (b.splitGen || 0) < CONFIG.SPLIT.MAX_DEPTH) spawnSplitFragments(b.x, b.y, b.dmg, b.splitGen || 0);
+      else {
+        if (b.explodeOnEnd) explodeAt(b.x, b.y, 70, b.dmg * 0.9, 0, 120); // ランス着弾の小爆発
+        // ランス／貫通弾も、敵に触れていれば射程の切れ目で分裂する（着弾分裂を乗せる）
+        if (b.hitAny && (b.splitGen || 0) < CONFIG.SPLIT.MAX_DEPTH) spawnSplitFragments(b.x, b.y, b.dmg, b.splitGen || 0);
+      }
       continue;
     }
     if (b.noCollide) continue; // ポーションは道中の敵に当たらない（山なり投擲）
@@ -2293,6 +2297,7 @@ loadImage(BULLET_SPRITE);
 loadImage('assets/shockwave.png');  // 衝撃波エフェクト（旧フォールバック）
 loadImage('assets/magic_circle_blue.png');   // 衝撃波の魔法陣（シア＝射手用）
 loadImage('assets/magic_circle_green.png');  // 衝撃波の魔法陣（ソフィア＝魔導士用）
+loadImage('assets/meteor.png');              // 隕石スプライト（Codex製・進化隕石の岩本体）
 for (const z of ZONES) { if (z.img) loadImage(z.img); } // ゾーン背景アート
 for (const t of Object.values(ENEMY_TYPES)) loadImage(t.sprite);
 for (const t of Object.values(PICKUP_TYPES)) loadImage(t.sprite);
@@ -2785,12 +2790,24 @@ function drawEffects() {
         ctx.beginPath(); ctx.moveTo(rx - size * 0.65, ry); ctx.lineTo(rx + size * 0.65, ry); ctx.lineTo(rx, ry - size * 3.2); ctx.closePath(); ctx.fill();
         ctx.globalAlpha = 1;
       }
-      ctx.fillStyle = fx.big ? '#7c2d12' : '#57534e';
-      ctx.strokeStyle = fx.big ? '#f97316' : '#292524';
-      ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(rx, ry, size, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = 'rgba(255,255,255,0.22)';
-      ctx.beginPath(); ctx.arc(rx - size * 0.3, ry - size * 0.3, size * 0.34, 0, Math.PI * 2); ctx.fill();
+      // 岩本体：隕石(big)はCodex製スプライト、通常の落石(small)は従来の手続き描画
+      ctx.globalAlpha = 1;
+      const meteorImg = fx.big ? imageCache.get('assets/meteor.png') : null;
+      if (meteorImg && meteorImg.ok) {
+        const d = size * 2.7; // スプライトの見かけ直径（岩+溶岩の余白込み）
+        ctx.save();
+        ctx.translate(rx, ry);
+        ctx.rotate((1 - prog) * 0.9); // 落下中はうっすら回転
+        ctx.drawImage(meteorImg.img, -d / 2, -d / 2, d, d);
+        ctx.restore();
+      } else {
+        ctx.fillStyle = fx.big ? '#7c2d12' : '#57534e';
+        ctx.strokeStyle = fx.big ? '#f97316' : '#292524';
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(rx, ry, size, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,255,0.22)';
+        ctx.beginPath(); ctx.arc(rx - size * 0.3, ry - size * 0.3, size * 0.34, 0, Math.PI * 2); ctx.fill();
+      }
     } else if (fx.kind === 'fbeam') {
       // 光線（太光線はさらに極太＋外側グロー）。色は青／緑
       const a = Math.max(0, fx.t / fx.maxT);

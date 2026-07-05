@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>シア・サバイバー</title>
-<link rel="stylesheet" href="style.css?v=11">
+<link rel="stylesheet" href="style.css?v=12">
 </head>
 <body>
   <!-- ゲーム描画キャンバス -->
@@ -24,9 +24,12 @@
       <div id="hud-right">
         <span class="hud-item" id="coin-text">🪙 0</span>
         <span class="hud-item" id="kill-text">💥 0</span>
-        <button id="sfx-toggle" title="効果音ON/OFF">🔊</button>
-        <button id="pause-btn" title="一時停止">⏸</button>
       </div>
+    </div>
+    <!-- 操作ボタンは常に右上に固定＝コイン/撃破が4桁でも隠れず必ず押せる（モバイル対策） -->
+    <div id="hud-controls">
+      <button id="sfx-toggle" title="効果音ON/OFF">🔊</button>
+      <button id="pause-btn" title="一時停止">⏸</button>
     </div>
     <!-- 取得武器/パッシブの小アイコン一覧（進化可能な組合せは光る） -->
     <div id="weapon-bar"></div>
@@ -111,7 +114,7 @@
       <p class="howto" style="text-align:left">
         📐 形式：<b>8列 × 9行</b> のスプライトシート（png/webp）<br>
         行の順番：0待機／1右走り／2左走り／3手振り／4ジャンプ／5転倒／6待ち／7走り／8レビュー<br>
-        ※agmsgのスプライト集と同じ並びならそのまま使えます
+        ※codex petsのスプライト集と同じ並びならそのまま使えます
       </p>
       <img id="skin-preview" alt="プレビュー" style="max-width:100%;max-height:160px;image-rendering:auto;border-radius:10px;display:none;margin:6px auto;background:rgba(255,255,255,0.04)">
       <p id="skin-status" class="subtitle"></p>
@@ -202,6 +205,6 @@
     </div>
   </div>
 
-  <script src="game.js?v=11"></script>
+  <script src="game.js?v=12"></script>
 </body>
 </html>
