@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>シア・サバイバー</title>
-<link rel="stylesheet" href="style.css?v=5">
+<link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
   <!-- ゲーム描画キャンバス -->
@@ -53,6 +53,7 @@
         <button id="history-btn" class="sub-btn">📜 履歴</button>
         <button id="dex-btn" class="sub-btn">📖 図鑑</button>
         <button id="feedback-btn" class="sub-btn">💬 フィードバック</button>
+        <button id="skin-btn" class="sub-btn">🎨 マイキャラ</button>
         <button id="sfx-toggle-title" class="sub-btn">🔊 音ON</button>
       </div>
       <div id="ranking-title" class="ranking-wrap"></div>
@@ -99,6 +100,28 @@
         <button id="feedback-send" class="big-btn">送信する</button>
         <button id="feedback-close" class="big-btn ghost-btn">閉じる</button>
       </div>
+    </div>
+  </div>
+
+  <!-- マイキャラ（カスタムスプライト集）読み込み -->
+  <div id="skin-screen" class="overlay hidden">
+    <div class="panel">
+      <h2>🎨 マイキャラ</h2>
+      <p class="subtitle">自分のスプライト集を読み込むと、どのキャラを選んでもその見た目で遊べます（性能は選んだキャラのまま）</p>
+      <p class="howto" style="text-align:left">
+        📐 形式：<b>8列 × 9行</b> のスプライトシート（png/webp）<br>
+        行の順番：0待機／1右走り／2左走り／3手振り／4ジャンプ／5転倒／6待ち／7走り／8レビュー<br>
+        ※agmsgのスプライト集と同じ並びならそのまま使えます
+      </p>
+      <img id="skin-preview" alt="プレビュー" style="max-width:100%;max-height:160px;image-rendering:auto;border-radius:10px;display:none;margin:6px auto;background:rgba(255,255,255,0.04)">
+      <p id="skin-status" class="subtitle"></p>
+      <input id="skin-file" type="file" accept="image/png,image/webp,image/jpeg" style="display:none">
+      <div id="skin-btn-row" style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;align-items:center">
+        <button id="skin-pick" class="big-btn">画像を選ぶ</button>
+        <button id="skin-toggle" class="big-btn ghost-btn hidden">使用中：ON</button>
+        <button id="skin-clear" class="big-btn ghost-btn hidden">削除</button>
+      </div>
+      <button id="skin-close" class="big-btn ghost-btn" style="margin-top:12px">閉じる</button>
     </div>
   </div>
 
@@ -157,6 +180,6 @@
     </div>
   </div>
 
-  <script src="game.js?v=5"></script>
+  <script src="game.js?v=6"></script>
 </body>
 </html>

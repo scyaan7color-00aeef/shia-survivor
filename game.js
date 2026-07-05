@@ -626,6 +626,10 @@ const ui = {
   feedbackBtn: $('feedback-btn'), feedbackScreen: $('feedback-screen'),
   feedbackText: $('feedback-text'), feedbackThanks: $('feedback-thanks'),
   feedbackSend: $('feedback-send'), feedbackClose: $('feedback-close'),
+  // マイキャラ（カスタムスキン）
+  skinBtn: $('skin-btn'), skinScreen: $('skin-screen'), skinFile: $('skin-file'),
+  skinPick: $('skin-pick'), skinToggle: $('skin-toggle'), skinClear: $('skin-clear'),
+  skinClose: $('skin-close'), skinPreview: $('skin-preview'), skinStatus: $('skin-status'),
   gameoverScreen: $('gameover-screen'), resultStats: $('result-stats'),
   newrecordText: $('newrecord-text'), retryBtn: $('retry-btn'), homeBtn: $('home-btn'),
   nameInput: $('name-input'), nameSave: $('name-save'), rankingGameover: $('ranking-gameover'),
@@ -2200,8 +2204,40 @@ for (const z of ZONES) { if (z.img) loadImage(z.img); } // ゾーン背景アー
 for (const t of Object.values(ENEMY_TYPES)) loadImage(t.sprite);
 for (const t of Object.values(PICKUP_TYPES)) loadImage(t.sprite);
 
-// 現在のキャラのシート（読めなければ相手方→null）
+/* ===== カスタムスキン（自分のスプライト集で遊ぶ） =====
+ * 8列×9行のスプライトシート画像を読み込むと、選択キャラに関わらず
+ * プレイヤーの見た目だけを差し替える（クラス/武器は選択キャラのまま）。
+ * フレームは画像の実サイズを 8列×9行 で割って自動算出＝解像度非依存。
+ * localStorage に保存して再訪時も維持する。 */
+const CUSTOM_SKIN_KEY = 'cyanissimo_survivor_customskin_v1';
+const SKIN_ROWS = 9; // スプライトシートの行数（ポーズ数）
+let customSkin = null;   // { img, frameW, frameH } または null
+let customSkinOn = false;
+function setCustomSkinFromDataURL(dataURL, onDone) {
+  const img = new Image();
+  img.onload = () => {
+    customSkin = { img, frameW: img.naturalWidth / SPRITE_SHEET.cols, frameH: img.naturalHeight / SKIN_ROWS };
+    customSkinOn = true;
+    try { localStorage.setItem(CUSTOM_SKIN_KEY, dataURL); } catch { /* 容量超過等は保存だけ諦める */ }
+    if (onDone) onDone(true);
+  };
+  img.onerror = () => { if (onDone) onDone(false); };
+  img.src = dataURL;
+}
+function clearCustomSkin() {
+  customSkin = null; customSkinOn = false;
+  try { localStorage.removeItem(CUSTOM_SKIN_KEY); } catch {}
+}
+function setCustomSkinEnabled(on) { if (customSkin) customSkinOn = !!on; }
+(function restoreCustomSkin() { // 起動時に保存済みスキンを復元（既定でON）
+  let saved = null;
+  try { saved = localStorage.getItem(CUSTOM_SKIN_KEY); } catch {}
+  if (saved) setCustomSkinFromDataURL(saved);
+})();
+
+// 現在のキャラのシート（カスタムスキン優先／読めなければ相手方→null）
 function getSheet() {
+  if (customSkinOn && customSkin && customSkin.img) return customSkin.img;
   const key = (S.player && S.player.character) || S.selectedCharacter || 'shia';
   const cs = charSheets[key];
   if (cs) {
@@ -2287,9 +2323,13 @@ function drawPlayer() {
   if (p.invulnTimer > 0 && Math.floor(p.invulnTimer * 12) % 2 === 0) ctx.globalAlpha = 0.45;
 
   if (sheet) {
-    const sx = frame * SPRITE_SHEET.frameW;
-    const sy = anim.row * SPRITE_SHEET.frameH;
-    ctx.drawImage(sheet, sx, sy, SPRITE_SHEET.frameW, SPRITE_SHEET.frameH,
+    // カスタムスキン使用時は画像実サイズから割り出したコマ寸法を使う（解像度非依存）
+    const useCustom = customSkinOn && customSkin && sheet === customSkin.img;
+    const fw = useCustom ? customSkin.frameW : SPRITE_SHEET.frameW;
+    const fh = useCustom ? customSkin.frameH : SPRITE_SHEET.frameH;
+    const sx = frame * fw;
+    const sy = anim.row * fh;
+    ctx.drawImage(sheet, sx, sy, fw, fh,
       p.x - DRAW_W / 2, p.y - DRAW_H / 2, DRAW_W, DRAW_H);
   } else {
     // シートが読めない時の予備（円）
@@ -3650,6 +3690,46 @@ if (ui.dexClose) ui.dexClose.addEventListener('click', hideDex);
 if (ui.feedbackBtn) ui.feedbackBtn.addEventListener('click', showFeedback);
 if (ui.feedbackClose) ui.feedbackClose.addEventListener('click', hideFeedback);
 if (ui.feedbackSend) ui.feedbackSend.addEventListener('click', handleFeedbackSend);
+
+/* ===== マイキャラ（カスタムスキン）UI ===== */
+function refreshSkinUI() {
+  const has = !!customSkin;
+  if (ui.skinPreview) {
+    if (has) { ui.skinPreview.src = customSkin.img.src; ui.skinPreview.style.display = 'block'; }
+    else { ui.skinPreview.style.display = 'none'; }
+  }
+  if (ui.skinToggle) {
+    ui.skinToggle.classList.toggle('hidden', !has);
+    ui.skinToggle.textContent = customSkinOn ? '使用中：ON' : '使用：OFF';
+  }
+  if (ui.skinClear) ui.skinClear.classList.toggle('hidden', !has);
+  if (ui.skinStatus) {
+    ui.skinStatus.textContent = has
+      ? (customSkinOn ? '✅ このスプライトで遊びます' : '（今は標準キャラで遊びます）')
+      : 'まだ読み込まれていません';
+  }
+}
+function showSkin() { if (ui.skinScreen) { ui.skinScreen.classList.remove('hidden'); refreshSkinUI(); } }
+function hideSkin() { if (ui.skinScreen) ui.skinScreen.classList.add('hidden'); }
+if (ui.skinBtn) ui.skinBtn.addEventListener('click', showSkin);
+if (ui.skinClose) ui.skinClose.addEventListener('click', hideSkin);
+if (ui.skinPick) ui.skinPick.addEventListener('click', () => ui.skinFile && ui.skinFile.click());
+if (ui.skinFile) ui.skinFile.addEventListener('change', (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  if (ui.skinStatus) ui.skinStatus.textContent = '読み込み中…';
+  const reader = new FileReader();
+  reader.onload = () => setCustomSkinFromDataURL(String(reader.result), (ok) => {
+    if (!ok && ui.skinStatus) ui.skinStatus.textContent = '⚠️ 画像を読み込めませんでした';
+    refreshSkinUI();
+    renderCharSelect(); // キャラ選択のプレビューにも反映
+  });
+  reader.readAsDataURL(f);
+  ui.skinFile.value = ''; // 同じファイルを再選択できるように
+});
+if (ui.skinToggle) ui.skinToggle.addEventListener('click', () => { setCustomSkinEnabled(!customSkinOn); refreshSkinUI(); });
+if (ui.skinClear) ui.skinClear.addEventListener('click', () => { clearCustomSkin(); refreshSkinUI(); });
+
 // 一時停止→ホーム（タイトル）へ戻る（ランは破棄）
 if (ui.pauseHomeBtn) ui.pauseHomeBtn.addEventListener('click', () => {
   ui.pauseScreen.classList.add('hidden');
