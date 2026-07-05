@@ -61,8 +61,9 @@ const CONFIG = {
   // 追加武器：弾分裂（スプリット）
   SPLIT: {
     COUNT_BASE: 2,          // Lv1 で分裂する破片数
+    MAX_DEPTH: 2,           // 分裂の最大回数（破片も残り回数を引き継いで再分裂）
     SPREAD_DEG: 42,         // 破片の拡散角（度・全体）
-    FRAG_DAMAGE_MULT: 0.6,  // 破片のダメージ倍率（元弾比）
+    FRAG_DAMAGE_MULT: 0.6,  // 元弾→破片のダメージ倍率（破片→破片は減衰なし）
     FRAG_LIFE: 0.28,        // 破片の寿命（秒）＝短射程
     FRAG_SPEED: 300,        // 破片の速度
     FRAG_RADIUS: 5,
@@ -328,8 +329,8 @@ const EVOLUTIONS = [
   // --- 以下は全職業共通の進化 ---
   { id: 'bits',    emoji: '🛰️', name: '蒼銀ビット陣',   core: 'funnel', passive: 'firespeed',
     material: 'ファンネルLv4＋弾速＆連射Lv2', desc: 'ファンネルの上位。ビットが増え、威力と射程が大幅に上昇' },
-  { id: 'scythe',  emoji: '🌙', name: '旋回大鎌',       core: 'sweep', passive: 'firespeed',
-    material: '薙ぎ払いLv4＋弾速＆連射Lv2', desc: '緑の光刃が360°を薙ぎ続け、一定間隔で斬撃リングを放つ' },
+  { id: 'scythe',  emoji: '🔨', name: '三連釘バット',   core: 'sweep', passive: 'firespeed',
+    material: '薙ぎ払いLv4＋弾速＆連射Lv2', desc: '釘バットが3本になり、通常の薙ぎ払いと同じ挙動で三方向を薙ぐ' },
   { id: 'ward',    emoji: '🌸', name: '月影結界',       core: 'sweep', passive: 'hp',
     material: '薙ぎ払いLv4＋最大HPLv2', desc: '被弾を1回防ぐ結界を定期的に張り、更新時に周囲を斬り飛ばす' },
   { id: 'nova',    emoji: '💫', name: '連鎖星爆',       core: 'shock', passive: 'range',
@@ -1734,13 +1735,16 @@ function damageEnemy(e, dmg, srcX, srcY, knock) {
 }
 
 // 弾分裂：着弾点から破片弾を放射状に生成（弾数を引き継いで増える）
-function spawnSplitFragments(x, y, baseDmg) {
+function spawnSplitFragments(x, y, baseDmg, gen) {
   const p = S.player;
   if (!archOf(p).splitFragments) return; // 分裂は射手のみ（他職の分裂カードは別効果）
   const lv = upLv('split');
   if (lv <= 0) return;
+  gen = gen || 0;
   // 破片数 ＝ 基本2 ＋ 分裂Lv ＋ 弾強化で増えた弾数（「弾数を引き継ぐ」）
   const n = CONFIG.SPLIT.COUNT_BASE + (lv - 1) + Math.max(0, p.bulletCount - CONFIG.WEAPON.BULLET_COUNT);
+  // 元弾→破片は0.6倍、破片→破片は減衰なし（威力減衰をしない）
+  const fragDmg = gen === 0 ? baseDmg * CONFIG.SPLIT.FRAG_DAMAGE_MULT : baseDmg;
   const start = Math.random() * Math.PI * 2; // 向きはランダム基準
   for (let i = 0; i < n; i++) {
     const a = start + (Math.PI * 2 / n) * i; // 放射状に均等分散
@@ -1748,12 +1752,13 @@ function spawnSplitFragments(x, y, baseDmg) {
       x, y,
       vx: Math.cos(a) * CONFIG.SPLIT.FRAG_SPEED,
       vy: Math.sin(a) * CONFIG.SPLIT.FRAG_SPEED,
-      dmg: baseDmg * CONFIG.SPLIT.FRAG_DAMAGE_MULT,
+      dmg: fragDmg,
       pierce: 0,
       life: CONFIG.SPLIT.FRAG_LIFE,
       radius: CONFIG.SPLIT.FRAG_RADIUS,
       hitSet: new Set(),
-      isFragment: true, // 破片はさらに分裂しない
+      isFragment: true,   // 破片フラグ（ノックバック無し等の判定用）
+      splitGen: gen + 1,  // 分裂世代＝残り回数の管理（MAX_DEPTHまで再分裂）
     });
   }
 }
@@ -1773,7 +1778,7 @@ function updateBullets(dt) {
       if (b.isPotion) potionLand(b);                                  // ポーションは狙った地点で爆発
       else if (b.explodeOnEnd) explodeAt(b.x, b.y, 70, b.dmg * 0.9, 0, 120); // ランス着弾の小爆発
       // 貫通弾（貫通カード取得後）も、敵に触れていれば射程の切れ目で分裂する
-      else if (b.hitAny && !b.isFragment) spawnSplitFragments(b.x, b.y, b.dmg);
+      else if (b.hitAny && (b.splitGen || 0) < CONFIG.SPLIT.MAX_DEPTH) spawnSplitFragments(b.x, b.y, b.dmg, b.splitGen || 0);
       continue;
     }
     if (b.noCollide) continue; // ポーションは道中の敵に当たらない（山なり投擲）
@@ -1791,8 +1796,8 @@ function updateBullets(dt) {
           b.pierce -= 1;
         } else {
           if (b.explodeOnEnd) explodeAt(b.x, b.y, 70, b.dmg * 0.9, 0, 120);
-          // 貫通を撃ち切った通常弾は着弾点で分裂
-          else if (!b.isFragment) spawnSplitFragments(b.x, b.y, b.dmg);
+          // 通常弾／破片は残り回数がある限り着弾点で再分裂
+          else if ((b.splitGen || 0) < CONFIG.SPLIT.MAX_DEPTH) spawnSplitFragments(b.x, b.y, b.dmg, b.splitGen || 0);
           b.dead = true;
           break;
         }
@@ -1801,47 +1806,6 @@ function updateBullets(dt) {
   }
   S.bullets = S.bullets.filter(b => !b.dead);
   S.enemies = S.enemies.filter(e => !e.dead);
-}
-
-/* 点(px,py)と線分(ax,ay)-(bx,by)の最短距離 */
-function distToSegment(px, py, ax, ay, bx, by) {
-  const dx = bx - ax, dy = by - ay;
-  const len2 = dx * dx + dy * dy;
-  let t = len2 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0;
-  t = t < 0 ? 0 : t > 1 ? 1 : t;
-  return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
-}
-
-/* ===== 進化：旋回（3本の棒が360°を薙ぐ＋斬撃リング） ===== */
-const SCYTHE = { REACH: 140, THICK: 26, POLES: 3, SPIN: 4.2 }; // 棒の長さ・太さ・本数・回転速度
-function updateScythe(dt) {
-  const p = S.player;
-  const baseLv = Math.max(1, upLv('sweep'));
-  const dmg = CONFIG.SWEEP.DAMAGE_BASE * (1 + CONFIG.SWEEP.DAMAGE_PER_LV * (baseLv - 1));
-  p.scytheAngle += dt * SCYTHE.SPIN; // 旋回（少し速め）
-  // 0.2秒ごとに、3本の棒（線分）上にいる敵へダメージ
-  p.scytheTick -= dt;
-  if (p.scytheTick <= 0) {
-    p.scytheTick = 0.2;
-    for (let k = 0; k < SCYTHE.POLES; k++) {
-      const a = p.scytheAngle + k * (Math.PI * 2 / SCYTHE.POLES);
-      const tx = p.x + Math.cos(a) * SCYTHE.REACH, ty = p.y + Math.sin(a) * SCYTHE.REACH;
-      for (const e of S.enemies) {
-        if (e.dead) continue;
-        if (distToSegment(e.x, e.y, p.x, p.y, tx, ty) <= SCYTHE.THICK + e.radius) {
-          damageEnemy(e, dmg * 0.5, p.x, p.y, 70);
-        }
-      }
-    }
-    S.enemies = S.enemies.filter(e => !e.dead);
-  }
-  // 一定間隔で全方位斬撃リング
-  p.scytheRingTimer -= dt;
-  if (p.scytheRingTimer <= 0) {
-    p.scytheRingTimer = 2.6;
-    S.effects.push({ kind: 'shock', x: p.x, y: p.y, r: 0, maxR: 190, dmg: dmg * 1.2, speed: 560, hitSet: new Set() });
-    p.actionAnim = 'waving'; p.actionTimer = 0.3; p.animTime = 0;
-  }
 }
 
 /* ===== 進化：月影結界（被弾軽減バリア＋更新時ノックバック斬） ===== */
@@ -1862,9 +1826,9 @@ function updateWard(dt) {
 /* ===== 追加武器：薙ぎ払い（扇状の近接攻撃） ===== */
 function updateSweep(dt) {
   const p = S.player;
-  // 進化した薙ぎ払いコアは専用ロジックへ
-  if (p.evolvedCore.sweep === 'scythe') { updateScythe(dt); return; }
   if (p.evolvedCore.sweep === 'ward') { updateWard(dt); return; }
+  // 昇格（scythe）＝釘バット3本。挙動は通常の薙ぎ払いと同じ
+  const scytheEvo = p.evolvedCore.sweep === 'scythe';
   const lv = upLv('sweep');
   if (lv <= 0) return;
   // 予約済みの振り（昇格コンボ）を消化
@@ -1884,15 +1848,15 @@ function updateSweep(dt) {
   // 昇格コンボ：Lv3以上＝一度振った後、続けて反時計回りにもう一振り（反対側の半円を薙ぐ）
   //             Lv5以上＝バットが二本になり、それぞれ2連撃（計4振りで360°×2）
   const swings = lv >= 3 ? 2 : 1;
-  const bats = lv >= 5 ? 2 : 1;
+  const bats = scytheEvo ? 3 : (lv >= 5 ? 2 : 1); // 昇格で釘バット3本
   const gap = CONFIG.SWEEP.ANIM_TIME * 0.85; // 連撃の間合い
   p.pendingSwings = [];
   for (let bt = 0; bt < bats; bt++) {
     for (let sw = 0; sw < swings; sw++) {
-      // 2振り目は反時計回りに続けて反対側の半円へ（-PI）。2本目のバットは反対側から。
-      const c = center + Math.PI * bt - Math.PI * sw;
+      // バットは円周を均等分した向きから振る（2本→180°／3本→120°）。2振り目は反対側の半円へ。
+      const c = center + (Math.PI * 2 / bats) * bt - Math.PI * sw;
       if (bt === 0 && sw === 0) performSweepSwing(c, lv);
-      else p.pendingSwings.push({ t: gap * sw + (bt ? gap * 0.5 : 0), center: c });
+      else p.pendingSwings.push({ t: gap * sw + gap * 0.5 * bt, center: c });
     }
   }
   p.pendingSwings.sort((a, b) => a.t - b.t);
@@ -2784,25 +2748,6 @@ function drawEvolvedWeapons() {
     g.addColorStop(1, 'rgba(120,180,255,0)');
     ctx.fillStyle = g;
     ctx.beginPath(); ctx.arc(b.x, b.y, r, 0, Math.PI * 2); ctx.fill();
-  }
-  // 旋回の進化＝緑の棒が3本、360°を薙ぐ（鎌なし・長め・少し速い回転）
-  if (p.evolvedCore.sweep === 'scythe') {
-    const R = SCYTHE.REACH;
-    ctx.save(); ctx.translate(p.x, p.y);
-    for (let k = 0; k < SCYTHE.POLES; k++) {
-      ctx.save();
-      ctx.rotate(p.scytheAngle + k * (Math.PI * 2 / SCYTHE.POLES));
-      // 棒本体（緑）＋芯のハイライト
-      ctx.strokeStyle = 'rgba(74,222,128,0.95)'; ctx.lineWidth = 9; ctx.lineCap = 'round';
-      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(R, 0); ctx.stroke();
-      ctx.strokeStyle = 'rgba(240,255,240,0.9)'; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(R, 0); ctx.stroke();
-      // 先端の光
-      ctx.fillStyle = 'rgba(190,255,190,0.95)';
-      ctx.beginPath(); ctx.arc(R, 0, 6, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
-    }
-    ctx.restore();
   }
   // 月影結界
   if (p.evolvedCore.sweep === 'ward' && p.wardCharges > 0) {
