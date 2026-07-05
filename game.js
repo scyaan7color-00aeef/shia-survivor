@@ -210,13 +210,64 @@ const ENEMY_TYPES = {
     radius: 24, hp: 130, speed: 34, dmg: 20, xp: 6,
     coinChance: 0.9, coinValue: 4, size: 52, unlockAt: 260, weight: 2,
   },
+  swarmling: { // 羽虫の大群：極小・高速・低HP・大群で湧く
+    name: '羽虫', emoji: '🦟', sprite: 'assets/enemy_swarmling.png',
+    radius: 9, hp: 5, speed: 132, dmg: 5, xp: 1,
+    coinChance: 0.12, coinValue: 1, size: 20, unlockAt: 100, weight: 5,
+    wobble: true, groupMin: 5, groupMax: 9,
+  },
+  hornet: { // スズメバチ：素早く近づいて針を撃つハラス型
+    name: 'スズメバチ', emoji: '🐝', sprite: 'assets/enemy_hornet.png',
+    radius: 12, hp: 15, speed: 104, dmg: 8, xp: 2,
+    coinChance: 0.3, coinValue: 1, size: 28, unlockAt: 180, weight: 4,
+    wobble: true, ranged: { range: 260, keep: 150, interval: 1.6, bulletSpeed: 240, bulletDmg: 7 },
+  },
+  crystalback: { // 宝石亀：超硬いが遅い・撃破報酬が大きい“ごほうび”敵
+    name: '宝石亀', emoji: '🐢', sprite: 'assets/enemy_crystalback.png',
+    radius: 22, hp: 160, speed: 26, dmg: 14, xp: 10,
+    coinChance: 1, coinValue: 10, size: 46, unlockAt: 200, weight: 2,
+  },
+  spitter: { // ヘドロ：遅い遠距離タンク・粘弾を撃つ
+    name: 'ヘドロ', emoji: '🟣', sprite: 'assets/enemy_spitter.png',
+    radius: 18, hp: 70, speed: 34, dmg: 12, xp: 4,
+    coinChance: 0.5, coinValue: 2, size: 40, unlockAt: 300, weight: 3,
+    ranged: { range: 340, keep: 260, interval: 2.6, bulletSpeed: 170, bulletDmg: 11 },
+  },
+  juggernaut: { // 重装：高HPの突進型・終盤の脅威
+    name: '重装兵', emoji: '🤖', sprite: 'assets/enemy_juggernaut.png',
+    radius: 24, hp: 200, speed: 40, dmg: 22, xp: 8,
+    coinChance: 0.95, coinValue: 5, size: 52, unlockAt: 330, weight: 2,
+    charge: { cooldown: 3.0, dashTime: 0.7, dashMult: 3.6 },
+  },
   boss: { // 定期的に現れる強敵（weight=0 で通常抽選外）
     name: 'デスロード', emoji: '💀', sprite: 'assets/enemy_boss.png',
     radius: 32, hp: 380, speed: 44, dmg: 25, xp: 25,
     coinChance: 1, coinValue: 20, size: 72, unlockAt: 0, weight: 0,
-    isBoss: true,
+    isBoss: true, bossPatterns: [0, 1, 2, 3, 4], // 万能型
+  },
+  bossMage: { // 魔導王：弾幕特化・撃ちながら間合いを取る
+    name: '魔導王', emoji: '🧙', sprite: 'assets/enemy_boss_mage.png',
+    radius: 30, hp: 330, speed: 40, dmg: 22, xp: 30,
+    coinChance: 1, coinValue: 24, size: 70, unlockAt: 0, weight: 0,
+    isBoss: true, bossPatterns: [1, 3, 4], // 扇/二重リング/狙撃
+    ranged: { range: 360, keep: 200, interval: 2.4, bulletSpeed: 200, bulletDmg: 10 },
+  },
+  bossTitan: { // 巨獣：超高HP・遅い・落雷と召喚で押しつぶす
+    name: '巨獣ベヒモス', emoji: '🐲', sprite: 'assets/enemy_boss_titan.png',
+    radius: 42, hp: 640, speed: 30, dmg: 30, xp: 40,
+    coinChance: 1, coinValue: 30, size: 92, unlockAt: 0, weight: 0,
+    isBoss: true, bossPatterns: [0, 2], // 落雷/召喚
+  },
+  bossKnight: { // 剣王：高速の突進型・狙撃と落雷で追い詰める
+    name: '剣王アルガルド', emoji: '🤺', sprite: 'assets/enemy_boss_knight.png',
+    radius: 30, hp: 430, speed: 52, dmg: 26, xp: 34,
+    coinChance: 1, coinValue: 26, size: 70, unlockAt: 0, weight: 0,
+    isBoss: true, bossPatterns: [4, 0], // 狙撃/落雷
+    charge: { cooldown: 3.2, dashTime: 0.6, dashMult: 3.4 },
   },
 };
+// ボスの出現ローテーション（順番に登場して変化を出す）
+const BOSS_TYPES = ['boss', 'bossMage', 'bossTitan', 'bossKnight'];
 
 /* ===== ドロップ品定義（画像差し替え可） ===== */
 const PICKUP_TYPES = {
@@ -689,6 +740,7 @@ const S = {
   shake: 0,       // 画面シェイクの強さ（減衰）
   hitStop: 0,     // ヒットストップ残り時間（秒）
   bossKills: 0,   // ボス撃破数（星屑計算用）
+  bossSpawnCount: 0, // ボス出現数（種類ローテーション用）
   zone: 0,        // 背景ゾーン（ボス撃破で進む）
   bossRushTimer: 0, // ボスラッシュ用
   evoCinematic: null, // 進化演出 { t, name, emoji }
@@ -930,9 +982,11 @@ function updateSpawning(dt) {
   const bossEvery = S.time < 180 ? 170 : CONFIG.SPAWN.BOSS_INTERVAL; // 序盤は1回だけ小ボス
   if (S.bossTimer >= bossEvery) {
     S.bossTimer = 0;
-    const boss = spawnEnemy('boss');
+    const bossType = BOSS_TYPES[S.bossSpawnCount % BOSS_TYPES.length]; // 種類をローテーション
+    S.bossSpawnCount += 1;
+    const boss = spawnEnemy(bossType);
     if (S.time < 190) { boss.hp *= 0.5; boss.maxHp *= 0.5; } // 3分の小ボスは控えめ
-    S.banner = { text: '💀 強敵出現！', t: 2.5 };
+    S.banner = { text: '💀 ' + ENEMY_TYPES[bossType].name + ' 出現！', t: 2.5 };
     SFX.boss();
   }
   // 5分以降：エリート（硬い護衛付き）を時々
@@ -1623,7 +1677,8 @@ function updateEnemyBullets(dt) {
 /* ===== ボスの技（予告→発動・5パターン） ===== */
 function bossAttack(e) {
   const p = S.player;
-  const pat = Math.floor(Math.random() * 5);
+  const pats = ENEMY_TYPES[e.type].bossPatterns || [0, 1, 2, 3, 4]; // ボスごとの得意技
+  const pat = pats[Math.floor(Math.random() * pats.length)];
   if (pat === 0) {
     // 落雷：プレイヤー足元に予告円→発動（複数）
     for (let i = 0; i < 3; i++) {
