@@ -91,6 +91,17 @@ const CONFIG = {
     BAND: 26,               // リングの当たり判定の帯幅
     KNOCK: 200,             // ノックバック強さ
   },
+  METEOR: {                 // 落石（進化＝隕石）：空から岩が降り着弾点にAoE
+    INTERVAL_BASE: 2.6,     // Lv1 の発動間隔（秒）
+    INTERVAL_MULT: 0.9,     // レベルごとに間隔 ×0.9
+    DAMAGE_BASE: 30,        // Lv1 の1発の威力
+    DAMAGE_PER_LV: 0.5,     // レベルごとに +50%
+    RADIUS_BASE: 68,        // Lv1 の着弾半径
+    RADIUS_PER_LV: 0.12,    // レベルごとに +12%
+    FALL_DUR: 0.7,          // 落下（予告）時間
+    SPAWN_SPREAD: 260,      // 敵がいない時の落下ばらつき半径
+    KNOCK: 140,             // ノックバック強さ
+  },
   KNOCK_DECAY: 9,           // ノックバック減衰係数（大きいほど速く止まる）
   SHAKE_DECAY: 5,           // 画面シェイク減衰
   BEST_KEY: 'cyanissimo_survivor_best',      // 旧・最長記録（互換のため書き続ける）
@@ -110,7 +121,7 @@ const CONFIG = {
   EVO_MAX_PER_RUN: 3,        // 1ランの進化上限（進化研究で+1）
   EVO_PASSIVE_REQ: 2,        // 進化に必要なパッシブLv（進化研究で-1・緩和済み）
   EVO_CORE_REQ: 4,           // 進化に必要な武器コアLv（Maxでなくても届く＝緩和済み）
-  CORE_MAX: { multi: 6, sweep: 6, shock: 6, funnel: 5 }, // 参考：各コアの最大Lv
+  CORE_MAX: { multi: 6, sweep: 6, shock: 6, funnel: 5, meteor: 6 }, // 参考：各コアの最大Lv
 };
 
 /* ===== 主役スプライトシート仕様（1536x1872 / 8列x9行 / 1コマ192x208） ===== */
@@ -249,6 +260,8 @@ const UPGRADE_POOL = [
     desc: '釘バットを反時計回りに振る近接攻撃（Lv3で2連撃・Lv5で二刀＆各2連撃）', apply: p => {} },
   { id: 'shock', emoji: '💥', name: '衝撃波', max: 6,
     desc: '周囲へ衝撃波リングを放つ（Lvで範囲と威力が上昇）', apply: p => {} },
+  { id: 'meteor', emoji: '🪨', name: '落石', max: 6,
+    desc: '空から岩が降り、着弾点に範囲ダメージ（Lvで数・威力・範囲が上昇。進化で隕石）', apply: p => {} },
   // --- パッシブ ---
   { id: 'range',  emoji: '🔭', name: '射程アップ',     desc: '弾・ビットの射程+15%',    max: 6, apply: p => { p.rangeMult *= 1.15; } },
   { id: 'speed',  emoji: '👟', name: '移動速度アップ', desc: '移動速度+10%',            max: 6, apply: p => { p.moveSpeedMult *= 1.10; } },
@@ -284,7 +297,7 @@ const SHOP_ITEMS = [
  * core = 進化元の武器コア（multi=弾/ sweep=薙ぎ払い/ shock=衝撃波）
  * passive = 必要パッシブ（Lv EVO_PASSIVE_REQ 以上）
  * group = 同グループの進化は1ラン1つ（コア消費） */
-const EVO_GROUP = { bullet: 'bullet', sweep: 'sweep', shock: 'shock', funnel: 'funnel' };
+const EVO_GROUP = { bullet: 'bullet', sweep: 'sweep', shock: 'shock', funnel: 'funnel', meteor: 'meteor' };
 const EVOLUTIONS = [
   // --- 弾コアの進化（職業ごとに別レシピ。arch = その職業のみ提示） ---
   // 射手（シア）
@@ -321,6 +334,8 @@ const EVOLUTIONS = [
     material: '薙ぎ払いLv4＋最大HPLv2', desc: '被弾を1回防ぐ結界を定期的に張り、更新時に周囲を斬り飛ばす' },
   { id: 'nova',    emoji: '💫', name: '連鎖星爆',       core: 'shock', passive: 'range',
     material: '衝撃波Lv4＋射程Lv2', desc: '衝撃波でとどめを刺すと魔法陣が発火し、小爆発が最大4連鎖する' },
+  { id: 'meteorbig', emoji: '🌠', name: '隕石',         core: 'meteor', passive: 'range',
+    material: '落石Lv4＋射程Lv2', desc: '巨大な隕石が落下し着弾点を焼き払う特大範囲。周囲に小落石も降り続ける' },
 ];
 
 /* =========================================================
@@ -696,6 +711,7 @@ function createPlayer() {
     fireTimer: 0,           // 次弾までの残り時間
     sweepTimer: 0,          // 薙ぎ払いの次発動まで
     shockTimer: 0,          // 衝撃波の次発動まで
+    meteorTimer: 0,         // 落石の次発動まで
     actionTimer: 0,         // 攻撃モーション（振り等）の残り時間
     actionAnim: null,       // 攻撃モーション中に表示するアニメ名
     lastDir: { x: 1, y: 0 },// 直近の移動方向（近接の向き決めに使う）
@@ -717,7 +733,7 @@ function createPlayer() {
     // 進化状態
     evolutions: {},         // 進化ID → true
     evoCount: 0,            // 進化した回数
-    evolvedCore: { bullet: null, sweep: null, shock: null, funnel: null }, // コアごとの進化先
+    evolvedCore: { bullet: null, sweep: null, shock: null, funnel: null, meteor: null }, // コアごとの進化先
     // 進化武器の内部状態
     bits: [],               // ファンネル／蒼銀ビット
     railTimer: 3, railCharge: 0, railAngle: 0,
@@ -1917,6 +1933,41 @@ function updateShock(dt) {
   S.shake = Math.max(S.shake, 4);
 }
 
+/* ===== 追加武器：落石（進化＝隕石） ===== */
+// 落下ターゲット：敵がいればランダムな敵付近、いなければプレイヤー周囲のランダム
+function meteorTarget(p) {
+  const alive = S.enemies.filter(e => !e.dead);
+  if (alive.length) {
+    const e = alive[(Math.random() * alive.length) | 0];
+    return { x: e.x + (Math.random() - 0.5) * 60, y: e.y + (Math.random() - 0.5) * 60 };
+  }
+  const a = Math.random() * Math.PI * 2, d = 60 + Math.random() * CONFIG.METEOR.SPAWN_SPREAD;
+  return { x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d };
+}
+function spawnMeteor(pos, dmg, radius, fallDur, big) {
+  S.effects.push({ kind: 'falling', tx: pos.x, ty: pos.y, t: fallDur, fallDur, dmg, radius, big, landed: false });
+}
+function updateMeteor(dt) {
+  const p = S.player;
+  const lv = upLv('meteor');
+  if (lv <= 0) return;
+  p.meteorTimer -= dt;
+  if (p.meteorTimer > 0) return;
+  const evolved = p.evolvedCore.meteor === 'meteorbig';
+  p.meteorTimer = CONFIG.METEOR.INTERVAL_BASE * Math.pow(CONFIG.METEOR.INTERVAL_MULT, lv - 1) * (evolved ? 1.15 : 1);
+  const dmg = CONFIG.METEOR.DAMAGE_BASE * (1 + CONFIG.METEOR.DAMAGE_PER_LV * (lv - 1));
+  const rad = CONFIG.METEOR.RADIUS_BASE * (1 + CONFIG.METEOR.RADIUS_PER_LV * (lv - 1));
+  if (evolved) {
+    // 隕石：特大の一撃＋周囲に小落石
+    spawnMeteor(meteorTarget(p), dmg * 3.2, rad * 2.0, 1.1, true);
+    const small = 2 + Math.floor(lv / 2);
+    for (let i = 0; i < small; i++) spawnMeteor(meteorTarget(p), dmg * 0.8, rad * 0.9, CONFIG.METEOR.FALL_DUR, false);
+  } else {
+    const count = Math.min(1 + Math.ceil(lv / 2), 5);
+    for (let i = 0; i < count; i++) spawnMeteor(meteorTarget(p), dmg, rad, CONFIG.METEOR.FALL_DUR, false);
+  }
+}
+
 // 弧・リング等のエフェクトを更新（衝撃波はここで判定も行う）
 // visualOnly=true（レベルアップ選択中・リザルト中）：描画用タイマーだけ進め、
 // 敵へのダメージ判定は一切行わない。衝撃波リングは凍結（進めると敵を素通りしてしまうため）。
@@ -1945,6 +1996,24 @@ function updateEffects(dt, visualOnly) {
         }
       }
       if (fx.r >= fx.maxR) fx.dead = true;
+    } else if (fx.kind === 'falling') {
+      if (visualOnly) continue; // 一時停止中は落下を凍結
+      fx.t -= dt;
+      if (fx.t <= 0 && !fx.landed) {
+        fx.landed = true;
+        // 着弾＝円範囲内の敵へダメージ
+        for (const e of S.enemies) {
+          if (e.dead) continue;
+          if (Math.hypot(e.x - fx.tx, e.y - fx.ty) <= fx.radius + e.radius) {
+            damageEnemy(e, fx.dmg, fx.tx, fx.ty, CONFIG.METEOR.KNOCK);
+          }
+        }
+        S.enemies = S.enemies.filter(e => !e.dead);
+        // 着弾演出（既存の爆発エフェクトを流用）
+        S.effects.push({ kind: 'boom', x: fx.tx, y: fx.ty, r: 0, maxR: fx.radius, t: 0.35, maxT: 0.35 });
+        S.shake = Math.max(S.shake, fx.big ? 10 : 5);
+        fx.dead = true;
+      }
     }
   }
   S.effects = S.effects.filter(fx => !fx.dead);
@@ -2511,6 +2580,40 @@ function drawEffects() {
       g.addColorStop(1, 'rgba(255,120,60,0)');
       ctx.fillStyle = g;
       ctx.beginPath(); ctx.arc(fx.x, fx.y, Math.max(1, fx.r), 0, Math.PI * 2); ctx.fill();
+    } else if (fx.kind === 'falling') {
+      // 落石／隕石：着弾予告の影＋上空から落ちてくる岩
+      const prog = Math.max(0, Math.min(1, 1 - fx.t / fx.fallDur));
+      // 予告の影（着地点で広がる楕円）
+      ctx.save();
+      ctx.globalAlpha = 0.22 + 0.33 * prog;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      const sr = fx.radius * (0.4 + 0.6 * prog);
+      ctx.beginPath(); ctx.ellipse(fx.tx, fx.ty, sr, sr * 0.5, 0, 0, Math.PI * 2); ctx.fill();
+      // 予告リング
+      ctx.globalAlpha = 0.5;
+      ctx.strokeStyle = fx.big ? '#fca5a5' : '#fcd34d';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(fx.tx, fx.ty, fx.radius, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+      // 落ちてくる岩
+      const dropH = 540;
+      const rx = fx.tx, ry = fx.ty - dropH * (1 - prog);
+      const size = fx.big ? 34 : 16;
+      if (fx.big) { // 隕石＝炎の尾
+        ctx.globalAlpha = 0.55;
+        const g2 = ctx.createLinearGradient(rx, ry - size * 3.2, rx, ry);
+        g2.addColorStop(0, 'rgba(255,180,80,0)');
+        g2.addColorStop(1, 'rgba(255,110,40,0.85)');
+        ctx.fillStyle = g2;
+        ctx.beginPath(); ctx.moveTo(rx - size * 0.65, ry); ctx.lineTo(rx + size * 0.65, ry); ctx.lineTo(rx, ry - size * 3.2); ctx.closePath(); ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+      ctx.fillStyle = fx.big ? '#7c2d12' : '#57534e';
+      ctx.strokeStyle = fx.big ? '#f97316' : '#292524';
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(rx, ry, size, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.22)';
+      ctx.beginPath(); ctx.arc(rx - size * 0.3, ry - size * 0.3, size * 0.34, 0, Math.PI * 2); ctx.fill();
     } else if (fx.kind === 'railcharge') {
       // チャージ予告：伸びる細いガイド線＋点滅
       const a = 1 - fx.t / fx.maxT;
@@ -3595,6 +3698,7 @@ function tick(now) {
       updateEvoAura(dt);
       updateSweep(dt);
       updateShock(dt);
+      updateMeteor(dt);
       updatePools(dt); // 設置物（毒沼・トラップ等）— 未接続だとS.poolsが溜まり続けるので必ず呼ぶ
       updateBullets(dt);
       updateEffects(dt);
