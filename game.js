@@ -1227,15 +1227,28 @@ function updateMage(dt) {
   }
   // 進化：使い魔ビット＝自律する2体が敵を追って魔弾を撃つ
   if (p.evolvedCore.bullet === 'familiar') updateFamiliars(dt);
-  // 最終昇格（ソフィア）：球から外向きに画面外まで届く光線を定期発射
+  // 最終昇格（ソフィア）：球から六方向へ光線を放ち、回転しながら一時的に薙ぎ払う
   if (p.finalEvo.bullet) {
     p.orbBeamTimer = (p.orbBeamTimer || 0) - dt;
-    if (p.orbBeamTimer <= 0) {
-      p.orbBeamTimer = 1.5;
-      for (const o of p.orbs) {
-        const ang = Math.atan2(o.y - p.y, o.x - p.x); // 球の外向き（周回で薙ぐ）
-        fireFunnelBeam(o.x, o.y, ang, CONFIG.WEAPON.DAMAGE * p.damageMult * 1.4, false, 'green');
+    // 薙ぎ払い中：基準角をゆっくり回しつつ、周期的に各球から6方向へ発射
+    if (p.orbSweep && p.orbSweep.t > 0) {
+      p.orbSweep.t -= dt;
+      p.orbSweep.angle += dt * 5.2;            // 回転＝薙ぎ払い感
+      p.orbSweep.fireCd -= dt;
+      if (p.orbSweep.fireCd <= 0) {
+        p.orbSweep.fireCd = 0.1;               // 連続発射で薙いでいるように見せる
+        for (const o of p.orbs) {
+          for (let k = 0; k < 6; k++) {
+            const ang = p.orbSweep.angle + k * (Math.PI / 3); // 60°刻みの六方向
+            fireFunnelBeam(o.x, o.y, ang, CONFIG.WEAPON.DAMAGE * p.damageMult * 1.05, false, 'green');
+          }
+        }
       }
+    }
+    // 一定周期で薙ぎ払いを起動
+    if (p.orbBeamTimer <= 0) {
+      p.orbBeamTimer = 2.4;
+      p.orbSweep = { t: 0.42, fireCd: 0, angle: Math.random() * Math.PI };
       SFX.hit();
     }
   }
