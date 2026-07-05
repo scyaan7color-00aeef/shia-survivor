@@ -304,10 +304,25 @@ html, body {
 .pr-lv { font-size: 11px; color: #7dd3fc; }
 .stardust-gain { color: #c4b5fd; font-weight: bold; font-size: 14px; margin: 6px 0; }
 
-/* キャラクター選択 */
-#char-select { display: flex; gap: 10px; margin: 8px 0 14px; }
+/* キャラクター選択（横スクロール＝5キャラ以上でも全員に到達可能） */
+#char-select {
+  display: flex;
+  gap: 10px;
+  margin: 8px 0 14px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch; /* iOSの慣性スクロール */
+  scroll-snap-type: x proximity;
+  padding-bottom: 6px;               /* スクロールバー分の余白 */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(125,211,252,0.5) transparent;
+}
+#char-select::-webkit-scrollbar { height: 6px; }
+#char-select::-webkit-scrollbar-thumb { background: rgba(125,211,252,0.5); border-radius: 3px; }
 .char-card {
-  flex: 1 1 0;
+  flex: 0 0 auto;    /* 縮めず自然幅を保ち、はみ出す分は横スクロール */
+  width: 108px;
+  scroll-snap-align: center;
   display: flex; flex-direction: column; align-items: center; gap: 5px;
   background: rgba(255,255,255,0.05);
   border: 2px solid rgba(255,255,255,0.14);
