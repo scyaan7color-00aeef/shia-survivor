@@ -1203,22 +1203,6 @@ function fireFunnelBeam(x, y, angle, dmg, big, color) {
   if (big) { S.shake = Math.max(S.shake, 6); SFX.boss && SFX.boss(); }
 }
 
-/* ソフィア最終昇格の光線：球を起点に「ソフィア→球」の外向きへ太く画面外まで。
- * 球が周回するので毎回の発射位置がずれ、結果として薙ぎ払いになる。 */
-function fireOrbBeam(o, dmg) {
-  const p = S.player;
-  const ang = Math.atan2(o.y - p.y, o.x - p.x);   // ソフィア中心の放射方向
-  const len = Math.max(viewW, viewH) * 2.2;        // 画面外まで確実に届く
-  const thick = 19;                                // 太い光線
-  const ex = o.x + Math.cos(ang) * len, ey = o.y + Math.sin(ang) * len;
-  for (const e of S.enemies) {
-    if (e.dead) continue;
-    if (distToSegment(e.x, e.y, o.x, o.y, ex, ey) <= thick + e.radius) damageEnemy(e, dmg, o.x, o.y, 24);
-  }
-  S.enemies = S.enemies.filter(e => !e.dead);
-  S.effects.push({ kind: 'fbeam', x: o.x, y: o.y, angle: ang, len, thick, t: 0.14, maxT: 0.14, big: false, color: 'green' });
-}
-
 /* ===== ソフィア：緑の魔法球2つが左右逆回りで周回・貫通 ===== */
 function updateOrbs(dt) {
   const p = S.player;
@@ -1264,15 +1248,29 @@ function updateMage(dt) {
   }
   // 進化：使い魔ビット＝自律する2体が敵を追って魔弾を撃つ
   if (p.evolvedCore.bullet === 'familiar') updateFamiliars(dt);
-  // 最終昇格（ソフィア）：各球から「ソフィア→球」の外向きに太い光線を画面外まで放つ。
-  // 球は常に周回しているので、光線も一緒に回って自然に薙ぎ払いになる（球とソフィアの間には光線なし）。
-  if (p.finalEvo.bullet) {
-    p.orbBeamTimer = (p.orbBeamTimer || 0) - dt;
-    if (p.orbBeamTimer <= 0) {
-      p.orbBeamTimer = 0.1; // 球の現在位置で連続射（0.1秒毎）＝周回に追従して薙ぐ
-      for (const o of p.orbs) fireOrbBeam(o, CONFIG.WEAPON.DAMAGE * p.damageMult * 0.7);
+  // 最終昇格（ソフィア）：各球から「ソフィア→球」の外向きに太い光線を画面外まで常時放つ。
+  // 毎フレーム“今の球位置”で判定・描画するため、球が周回してもズレない（描画は drawEvolvedWeapons 側）。
+  if (p.finalEvo.bullet) updateOrbBeams(dt);
+}
+
+// 描画（drawEvolvedWeapons）は毎フレーム“今の球位置”から引くので常にズレない。
+// ダメージ判定は見た目と切り離し、一定間隔でその時点の球位置に対して行う（毎フレームだと被弾数字が乱れ打ちになるため）。
+function updateOrbBeams(dt) {
+  const p = S.player;
+  p.orbBeamTimer = (p.orbBeamTimer || 0) - dt;
+  if (p.orbBeamTimer > 0) return;
+  p.orbBeamTimer = 0.12;
+  const dmg = CONFIG.WEAPON.DAMAGE * p.damageMult * 0.85;
+  const len = Math.max(viewW, viewH) * 2.2;
+  for (const o of p.orbs) {
+    const ang = Math.atan2(o.y - p.y, o.x - p.x); // ソフィア中心の放射方向（＝今の球位置）
+    const ex = o.x + Math.cos(ang) * len, ey = o.y + Math.sin(ang) * len;
+    for (const e of S.enemies) {
+      if (e.dead) continue;
+      if (distToSegment(e.x, e.y, o.x, o.y, ex, ey) <= 19 + e.radius) damageEnemy(e, dmg, o.x, o.y, 6);
     }
   }
+  S.enemies = S.enemies.filter(e => !e.dead);
 }
 
 function updateFamiliars(dt) {
@@ -2978,6 +2976,24 @@ function drawEvolvedWeapons() {
     ctx.beginPath(); ctx.arc(o.x, o.y, rr, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#ecfccb';
     ctx.beginPath(); ctx.arc(o.x, o.y, rr * 0.3, 0, Math.PI * 2); ctx.fill();
+  }
+  // 最終昇格：各球から放射方向へ常時ビーム（毎フレーム今の球位置から描く＝ズレない）
+  if (p.finalEvo.bullet) {
+    const len = Math.max(viewW, viewH) * 2.2;
+    for (const o of p.orbs) {
+      const ang = Math.atan2(o.y - p.y, o.x - p.x);
+      const ex = o.x + Math.cos(ang) * len, ey = o.y + Math.sin(ang) * len;
+      ctx.save();
+      ctx.globalAlpha = 0.85;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(134,239,172,0.5)'; ctx.lineWidth = 38;
+      ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.strokeStyle = 'rgba(74,222,128,0.9)'; ctx.lineWidth = 19;
+      ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineWidth = 7;
+      ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.restore();
+    }
   }
   // ファンネル／蒼銀ビット
   for (const b of p.bits) {
