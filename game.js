@@ -805,7 +805,6 @@ function createPlayer() {
     // 進化武器の内部状態
     bits: [],               // ファンネル／蒼銀ビット
     railTimer: 3, railCharge: 0, railAngle: 0,
-    scytheAngle: 0, scytheTick: 0, scytheRingTimer: 3,
     wardTimer: 0, wardCharges: 0,
     // 選択肢拡張・復活（転生）
     rerollsLeft: lv('choice') >= 1 ? 1 : 0,
@@ -1240,7 +1239,7 @@ function updateMage(dt) {
     if (p.orbNovaTimer <= 0) {
       p.orbNovaTimer = 2.6;
       for (const o of p.orbs) {
-        S.effects.push({ kind: 'magiccircle', x: o.x, y: o.y, r: 42, t: 0.5, maxT: 0.5 });
+        // 魔法陣ビジュアルは削除（2026-07-10 suga.W依頼）。爆発ダメージは維持。
         explodeAt(o.x, o.y, 76, CONFIG.WEAPON.DAMAGE * p.damageMult * 1.4, 3, 90);
       }
       SFX.hit();
@@ -2962,7 +2961,7 @@ function drawBanner() {
   ctx.globalAlpha = 1;
 }
 
-// 進化武器の常設ビジュアル（ビット／大鎌／結界／魔法球）
+// 進化武器の常設ビジュアル（ビット／結界／魔法球）
 function drawEvolvedWeapons() {
   const p = S.player;
   // ソフィアの緑の魔法球（貫通）
@@ -3712,7 +3711,6 @@ function doEvolve(ev) {
   p.evolvedCore[EVO_GROUP[ev.core]] = ev.id;
   // 武器別の初期化
   if (ev.id === 'railgun') p.railTimer = 2.0;
-  if (ev.id === 'scythe') { p.scytheAngle = 0; p.scytheRingTimer = 2.0; }
   if (ev.id === 'ward') { p.wardTimer = 0.1; p.wardCharges = 0; }
   if (ev.id === 'funnelbeam') p.bits = [];
   // 演出：暗転→魔法陣→バナー＋音＋ヒットストップ
@@ -3846,8 +3844,12 @@ function gameOver(won = false) {
     ui.newrecordText.classList.add('hidden');
   }
 
-  // 名前入力欄をセット
-  if (ui.nameInput) ui.nameInput.value = getPlayerName();
+  // 名前入力欄をセット（未保存なら空欄＝placeholder「なまえ」を表示。デフォルト「シア」は入れない）
+  if (ui.nameInput) {
+    let saved = '';
+    try { saved = localStorage.getItem(CONFIG.NAME_KEY) || ''; } catch { /* 続行 */ }
+    ui.nameInput.value = saved;
+  }
   renderGameoverRanking();
   ui.gameoverScreen.classList.remove('hidden');
 }
