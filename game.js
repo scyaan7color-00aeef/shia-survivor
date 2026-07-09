@@ -113,8 +113,12 @@ const CONFIG = {
   NAME_KEY: 'cyanissimo_survivor_name',      // プレイヤー名
   RANK_MAX: 10,             // ランキング保持件数
   // メタ通貨・進化・音のキー
-  STARDUST_KEY: 'cyanissimo_survivor_stardust',    // 星屑（転生通貨）残高
-  PRESTIGE_KEY: 'cyanissimo_survivor_prestige_v1', // 恒久強化の取得段数
+  STARDUST_KEY: 'cyanissimo_survivor_stardust',    // 【旧】星屑（転生通貨）残高。ウォレットへ移行済（読み取りは移行のみ）
+  PRESTIGE_KEY: 'cyanissimo_survivor_prestige_v1', // 【旧】恒久強化の取得段数（撤廃・未使用）
+  WALLET_KEY: 'cyanissimo_survivor_wallet_v1',     // カスタマイズ通貨＝累計スコアで貯まるウォレット残高
+  SKIN_KEY: 'cyanissimo_survivor_effectskin_v1',   // 装備中のエフェクトスキンID
+  OWNED_SKINS_KEY: 'cyanissimo_survivor_ownedskins_v1', // 購入済みエフェクトスキンID配列
+  WALLET_MIGRATED_KEY: 'cyanissimo_survivor_wallet_migrated', // 旧星屑→ウォレット移行済フラグ
   HISTORY_KEY: 'cyanissimo_survivor_history_v1',   // プレイ履歴（時系列）
   HISTORY_MAX: 15,           // 履歴の保持件数
   EVO_EVERY_LEVELS: 4,       // （旧）進化候補の提示間隔。新・自動昇格では未使用
@@ -526,17 +530,28 @@ const ZONES = [
   { name: '星海の深淵', bg: '#0a0e22', grid: 'rgba(150,170,255,0.09)', img: 'assets/bg_zone8.png' },
 ];
 
-/* ===== 転生（プレステージ）恒久強化ツリー =====
- * 星屑（メタ通貨）で購入。localStorage永続。 */
-const PRESTIGE_TREE = [
-  { id: 'atk',    emoji: '⚔️', name: '攻撃基礎',     max: 5, prices: [20, 45, 90, 170, 320], desc: '与ダメージ+4%（1段ごと）' },
-  { id: 'hp',     emoji: '❤️', name: '生存基礎',     max: 5, prices: [18, 40, 80, 155, 300], desc: '最大HP+6%（1段ごと）' },
-  { id: 'mag',    emoji: '🧲', name: '回収磁力',     max: 5, prices: [15, 35, 75, 140, 260], desc: '回収範囲+8%（1段ごと）' },
-  { id: 'gold',   emoji: '💰', name: '商才',         max: 5, prices: [25, 55, 110, 210, 400], desc: 'コイン獲得+6%（1段ごと）' },
-  { id: 'start',  emoji: '🚀', name: '開始ブースト', max: 3, prices: [80, 220, 520], desc: '開始レベル+1（1段ごと）' },
-  { id: 'choice', emoji: '🔀', name: '選択肢拡張',   max: 2, prices: [120, 300], desc: '1段目：リロール解禁／2段目：バニッシュ解禁' },
-  { id: 'evo',    emoji: '🔬', name: '進化研究',     max: 3, prices: [160, 380, 800], desc: '1段目：進化の出現率↑／2段目：必要Lv−1／3段目：進化上限+1' },
-  { id: 'revive', emoji: '🪽', name: '復活の護符',   max: 1, prices: [600], desc: '1ランにつき1回、HP30%で復活' },
+/* ===== エフェクトスキン（カスタマイズ） =====
+ * 累計スコアで貯まるウォレットで購入。性能は一切変えない完全コスメ＝武器エフェクトの色替え。
+ * default は現行の見た目そのまま（col がすべて既定色＝購入不要・無改変）。
+ * 各スキンは弾/魔法球/薙ぎ払いトレイル/衝撃波/光線 の色を差し替える。localStorage永続。 */
+const EFFECT_SKINS = [
+  { id: 'default', emoji: '⚪', name: '標準', price: 0,
+    desc: '初期の見た目（無改変）', col: null },
+  { id: 'sakura', emoji: '🌸', name: '桜吹雪', price: 2500,
+    desc: '淡いピンクの華やかなエフェクト',
+    col: { core: '#f9a8d4', glow: 'rgba(249,168,212,0.9)', soft: 'rgba(251,207,232,0.55)', spark: '#fff0f6' } },
+  { id: 'gold', emoji: '🟡', name: '黄金', price: 5000,
+    desc: '豪奢な金色に統一',
+    col: { core: '#fbbf24', glow: 'rgba(251,191,36,0.9)', soft: 'rgba(253,224,71,0.5)', spark: '#fffbe6' } },
+  { id: 'crimson', emoji: '🔴', name: '深紅', price: 5000,
+    desc: '燃えるような赤の攻撃演出',
+    col: { core: '#f87171', glow: 'rgba(248,113,113,0.9)', soft: 'rgba(252,165,165,0.5)', spark: '#fff1f1' } },
+  { id: 'void', emoji: '🟣', name: '虚空', price: 8000,
+    desc: '紫紺の妖しい光',
+    col: { core: '#c084fc', glow: 'rgba(192,132,252,0.9)', soft: 'rgba(216,180,254,0.5)', spark: '#f5eaff' } },
+  { id: 'ice', emoji: '🔷', name: '氷晶', price: 8000,
+    desc: '澄んだ氷青のエフェクト',
+    col: { core: '#67e8f9', glow: 'rgba(103,232,249,0.9)', soft: 'rgba(165,243,252,0.5)', spark: '#eafcff' } },
 ];
 
 /* =========================================================
@@ -554,25 +569,57 @@ function loadImage(src) {
 }
 
 /* =========================================================
- * 転生（星屑）ストレージ
+ * カスタマイズ：ウォレット（累計スコア）＆エフェクトスキン のストレージ
  * ========================================================= */
-function loadStardust() {
-  try { return Math.max(0, parseInt(localStorage.getItem(CONFIG.STARDUST_KEY)) || 0); } catch { return 0; }
+function loadWallet() {
+  migrateStardustOnce();
+  try { return Math.max(0, parseInt(localStorage.getItem(CONFIG.WALLET_KEY)) || 0); } catch { return 0; }
 }
-function saveStardust(n) {
-  try { localStorage.setItem(CONFIG.STARDUST_KEY, String(Math.max(0, Math.floor(n)))); } catch {}
+function saveWallet(n) {
+  try { localStorage.setItem(CONFIG.WALLET_KEY, String(Math.max(0, Math.floor(n)))); } catch {}
 }
-function loadPrestige() {
-  try { return JSON.parse(localStorage.getItem(CONFIG.PRESTIGE_KEY)) || {}; } catch { return {}; }
-}
-function savePrestige(obj) {
-  try { localStorage.setItem(CONFIG.PRESTIGE_KEY, JSON.stringify(obj)); } catch {}
-}
-function prestigeLv(id) { return (loadPrestige()[id] || 0); }
+function addWallet(n) { saveWallet(loadWalletRaw() + Math.max(0, Math.floor(n))); }
+function loadWalletRaw() { try { return Math.max(0, parseInt(localStorage.getItem(CONFIG.WALLET_KEY)) || 0); } catch { return 0; } }
 
-// ラン終了時の星屑付与量
-function computeStardust(coins, timeSec, bossKills) {
-  return Math.floor(coins / 120) + Math.floor((timeSec / 60) * 1.5) + bossKills * 5;
+// 旧「星屑」残高を一度だけウォレットへ移行（無駄にしない）。恒久強化(PRESTIGE)は撤廃＝読まない。
+function migrateStardustOnce() {
+  try {
+    if (localStorage.getItem(CONFIG.WALLET_MIGRATED_KEY)) return;
+    const old = Math.max(0, parseInt(localStorage.getItem(CONFIG.STARDUST_KEY)) || 0);
+    if (old > 0) {
+      const cur = Math.max(0, parseInt(localStorage.getItem(CONFIG.WALLET_KEY)) || 0);
+      // 旧星屑はスコアより小さいスケールなので係数を掛けて移行（体感で無駄にならない程度）
+      localStorage.setItem(CONFIG.WALLET_KEY, String(cur + old * 50));
+    }
+    localStorage.setItem(CONFIG.WALLET_MIGRATED_KEY, '1');
+  } catch {}
+}
+
+// エフェクトスキン：装備中ID・購入済み一覧
+function loadEquippedSkin() {
+  try { return localStorage.getItem(CONFIG.SKIN_KEY) || 'default'; } catch { return 'default'; }
+}
+function saveEquippedSkin(id) { try { localStorage.setItem(CONFIG.SKIN_KEY, id); } catch {} }
+function loadOwnedSkins() {
+  try { const a = JSON.parse(localStorage.getItem(CONFIG.OWNED_SKINS_KEY)); return Array.isArray(a) ? a : []; }
+  catch { return []; }
+}
+function saveOwnedSkins(list) { try { localStorage.setItem(CONFIG.OWNED_SKINS_KEY, JSON.stringify(list)); } catch {} }
+function isSkinOwned(id) { return id === 'default' || loadOwnedSkins().includes(id); }
+
+// 現在装備中スキンの色パレット（default＝null＝各描画は既定色のまま＝無改変）
+let _activeSkinCol = null;
+function refreshActiveSkin() {
+  const s = EFFECT_SKINS.find(x => x.id === loadEquippedSkin());
+  _activeSkinCol = (s && s.col) ? s.col : null;
+}
+function skinCol() { return _activeSkinCol; } // null なら既定色を使う（呼び出し側でフォールバック）
+// rgba(...)文字列のアルファを0にする（グラデーションの端＝完全透明用）
+function fadeRGBA(c) { return c.replace(/[\d.]+\)$/, '0)'); }
+
+// ラン終了時にウォレットへ加算するスコア量（＝そのランのスコア）
+function computeWalletGain(score, won) {
+  return Math.round(score * (won ? 1.3 : 1)); // クリアはボーナス1.3倍
 }
 
 /* ===== プレイ履歴（時系列・ランキングとは別に直近の結果を保持） ===== */
@@ -757,11 +804,9 @@ const S = {
   banishMode: false,  // バニッシュ待機中フラグ
 };
 
-/* ===== プレイヤー生成（転生ボーナスを反映） ===== */
+/* ===== プレイヤー生成（恒久強化は撤廃＝毎ラン基礎値スタート） ===== */
 function createPlayer() {
-  const pr = loadPrestige();
-  const lv = id => (pr[id] || 0);
-  const maxHp = Math.round(CONFIG.PLAYER.BASE_HP * (1 + 0.06 * lv('hp')));
+  const maxHp = CONFIG.PLAYER.BASE_HP;
   const charKey = S.selectedCharacter || 'shia';
   const p = {
     character: charKey, // 選択キャラ
@@ -782,14 +827,14 @@ function createPlayer() {
     actionTimer: 0,         // 攻撃モーション（振り等）の残り時間
     actionAnim: null,       // 攻撃モーション中に表示するアニメ名
     lastDir: { x: 1, y: 0 },// 直近の移動方向（近接の向き決めに使う）
-    // 強化で変わるステータス（転生ボーナス込み）
-    damageMult: 1 + 0.04 * lv('atk'),
+    // 強化で変わるステータス（基礎値スタート＝恒久強化なし）
+    damageMult: 1,
     intervalMult: 1, bulletSpeedMult: 1, rangeMult: 1,
     bulletCount: CONFIG.WEAPON.BULLET_COUNT,
     pierce: CONFIG.WEAPON.PIERCE,
     moveSpeedMult: 1,
-    pickupRadius: CONFIG.PLAYER.PICKUP_RADIUS * (1 + 0.08 * lv('mag')),
-    coinGainMult: 1 + 0.06 * lv('gold'),
+    pickupRadius: CONFIG.PLAYER.PICKUP_RADIUS,
+    coinGainMult: 1,
     upgradeLevels: {},      // 強化ID → 取得回数
     // 弾/球のサイズ倍率（弾強化の2段目以降で拡大）
     bulletSizeMult: 1, orbSizeMult: 1,
@@ -806,13 +851,13 @@ function createPlayer() {
     bits: [],               // ファンネル／蒼銀ビット
     railTimer: 3, railCharge: 0, railAngle: 0,
     wardTimer: 0, wardCharges: 0,
-    // 選択肢拡張・復活（転生）
-    rerollsLeft: lv('choice') >= 1 ? 1 : 0,
-    banishLeft: lv('choice') >= 2 ? 1 : 0,
+    // 選択肢拡張・復活（恒久強化撤廃＝無し）
+    rerollsLeft: 0,
+    banishLeft: 0,
     bannedIds: {},          // バニッシュした強化ID
-    reviveLeft: lv('revive'),
-    // 開始ブースト：開始時に付与するレベルアップ回数
-    pendingStartLevels: lv('start'),
+    reviveLeft: 0,
+    // 開始ブースト：撤廃（0）
+    pendingStartLevels: 0,
     // --- 職業（アーキタイプ）別の内部状態 ---
     xpGainMult: 1,           // 経験値倍率（教師の固有ボーナス等）
     // 剣士
@@ -837,9 +882,9 @@ function createPlayer() {
   return p;
 }
 
-// 進化研究による必要パッシブLv・進化上限
-function evoPassiveReq() { return Math.max(1, CONFIG.EVO_PASSIVE_REQ - (prestigeLv('evo') >= 2 ? 1 : 0)); }
-function evoMaxPerRun() { return CONFIG.EVO_MAX_PER_RUN + (prestigeLv('evo') >= 3 ? 1 : 0); }
+// 進化の必要パッシブLv・進化上限（恒久強化撤廃＝基礎値のまま）
+function evoPassiveReq() { return Math.max(1, CONFIG.EVO_PASSIVE_REQ); }
+function evoMaxPerRun() { return CONFIG.EVO_MAX_PER_RUN; }
 
 // プレイヤーの強化レベル取得ヘルパー
 function upLv(id) { return (S.player.upgradeLevels[id] || 0); }
@@ -2600,14 +2645,22 @@ function drawBullets() {
       ctx.beginPath(); ctx.arc(b.x, b.y, b.radius * 2, 0, Math.PI * 2); ctx.fill();
       continue;
     }
-    if (entry && entry.ok) {
+    const sc = skinCol();
+    if (!sc && entry && entry.ok) {
+      // 標準スキン：従来どおり bullet.png（無改変）
       ctx.drawImage(entry.img, b.x - b.radius * 1.6, b.y - b.radius * 1.6, b.radius * 3.2, b.radius * 3.2);
     } else {
-      // 光る魔法弾
+      // 光る魔法弾（スキン装備時はスキン色のグローで描く）
       const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.radius * 2);
-      g.addColorStop(0, 'rgba(190, 235, 255, 1)');
-      g.addColorStop(0.5, 'rgba(80, 170, 255, 0.8)');
-      g.addColorStop(1, 'rgba(80, 170, 255, 0)');
+      if (sc) {
+        g.addColorStop(0, sc.spark);
+        g.addColorStop(0.5, sc.glow);
+        g.addColorStop(1, fadeRGBA(sc.soft));
+      } else {
+        g.addColorStop(0, 'rgba(190, 235, 255, 1)');
+        g.addColorStop(0.5, 'rgba(80, 170, 255, 0.8)');
+        g.addColorStop(1, 'rgba(80, 170, 255, 0)');
+      }
       ctx.fillStyle = g;
       ctx.beginPath();
       ctx.arc(b.x, b.y, b.radius * 2, 0, Math.PI * 2);
@@ -2671,14 +2724,15 @@ function drawNailBatSweep(fx) {
   const alpha = Math.min(1, fx.t / fx.maxT);
   ctx.save();
   ctx.translate(fx.x, fx.y);
-  // 振りの残像＝先端付近を通る細い弧の帯（現在角→開始角）
+  // 振りの残像＝先端付近を通る細い弧の帯（現在角→開始角）。スキン装備時はスキン色（バット本体は木製のまま）
+  const scs = skinCol();
   ctx.globalAlpha = alpha * 0.38;
-  ctx.strokeStyle = 'rgba(200,225,255,0.6)';
+  ctx.strokeStyle = scs ? scs.soft : 'rgba(200,225,255,0.6)';
   ctx.lineWidth = R * 0.10;
   ctx.lineCap = 'round';
   ctx.beginPath(); ctx.arc(0, 0, R * 0.86, curA, startA); ctx.stroke();
   ctx.globalAlpha = alpha * 0.6;
-  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+  ctx.strokeStyle = scs ? scs.glow : 'rgba(255,255,255,0.7)';
   ctx.lineWidth = 2;
   ctx.beginPath(); ctx.arc(0, 0, R * 0.86, curA, startA); ctx.stroke();
   // 釘バット本体（現在角へ回転して描く。太さは半径に比例）
@@ -2840,12 +2894,13 @@ function drawEffects() {
         ctx.beginPath(); ctx.arc(rx - size * 0.3, ry - size * 0.3, size * 0.34, 0, Math.PI * 2); ctx.fill();
       }
     } else if (fx.kind === 'fbeam') {
-      // 光線（太光線はさらに極太＋外側グロー）。色は青／緑
+      // 光線（太光線はさらに極太＋外側グロー）。色は青／緑（スキン装備時はスキン色）
       const a = Math.max(0, fx.t / fx.maxT);
       const ex = fx.x + Math.cos(fx.angle) * fx.len, ey = fx.y + Math.sin(fx.angle) * fx.len;
+      const scb = skinCol();
       const green = fx.color === 'green';
-      const outer = green ? 'rgba(134,239,172,0.55)' : 'rgba(125,211,252,0.55)';
-      const inner = green ? 'rgba(74,222,128,0.9)' : 'rgba(147,197,253,0.9)';
+      const outer = scb ? scb.soft : (green ? 'rgba(134,239,172,0.55)' : 'rgba(125,211,252,0.55)');
+      const inner = scb ? scb.glow : (green ? 'rgba(74,222,128,0.9)' : 'rgba(147,197,253,0.9)');
       ctx.globalAlpha = a;
       ctx.lineCap = 'round';
       ctx.strokeStyle = outer; ctx.lineWidth = fx.thick * 2;
@@ -2909,12 +2964,14 @@ function drawEffects() {
       ctx.restore(); ctx.globalAlpha = 1;
     } else if (fx.kind === 'shock') {
       const alpha = Math.max(0, 1 - fx.r / fx.maxR);
+      // スキン装備時は画像を使わずスキン色のリングで描く（標準は従来どおり）
+      const scq = skinCol();
       // 魔法陣アート：シア（射手）＝青／ソフィア（魔導士）＝緑。回転させながら拡大。
       // 他職業・画像未読込時は従来描画（shockwave.png→図形リング）にフォールバック
       const arch = S.player && S.player.archetype;
       const circleSrc = arch === 'gunner' ? 'assets/magic_circle_blue.png'
                       : arch === 'mage'   ? 'assets/magic_circle_green.png' : null;
-      const circle = circleSrc ? imageCache.get(circleSrc) : null;
+      const circle = (!scq && circleSrc) ? imageCache.get(circleSrc) : null;
       if (circle && circle.ok && fx.r > 1) {
         ctx.save();
         ctx.translate(fx.x, fx.y);
@@ -2925,13 +2982,13 @@ function drawEffects() {
         ctx.globalAlpha = 1;
         continue;
       }
-      const img = imageCache.get('assets/shockwave.png');
+      const img = scq ? null : imageCache.get('assets/shockwave.png');
       if (img && img.ok) {
         ctx.globalAlpha = alpha;
         ctx.drawImage(img.img, fx.x - fx.r, fx.y - fx.r, fx.r * 2, fx.r * 2);
         ctx.globalAlpha = 1;
       } else {
-        const col = shockColors();
+        const col = scq ? { main: scq.core, glow: scq.spark } : shockColors();
         ctx.globalAlpha = alpha * 0.9;
         ctx.strokeStyle = col.main;
         ctx.lineWidth = 5;
@@ -2964,16 +3021,23 @@ function drawBanner() {
 // 進化武器の常設ビジュアル（ビット／結界／魔法球）
 function drawEvolvedWeapons() {
   const p = S.player;
-  // ソフィアの緑の魔法球（貫通）
+  // ソフィアの魔法球（貫通）。スキン装備時はスキン色に
+  const scw = skinCol();
   for (const o of p.orbs) {
     const rr = (o.r || 16);
     const g = ctx.createRadialGradient(o.x, o.y, 0, o.x, o.y, rr);
-    g.addColorStop(0, 'rgba(190,255,200,1)');
-    g.addColorStop(0.5, 'rgba(74,222,128,0.85)');
-    g.addColorStop(1, 'rgba(34,197,94,0)');
+    if (scw) {
+      g.addColorStop(0, scw.spark);
+      g.addColorStop(0.5, scw.glow);
+      g.addColorStop(1, fadeRGBA(scw.soft));
+    } else {
+      g.addColorStop(0, 'rgba(190,255,200,1)');
+      g.addColorStop(0.5, 'rgba(74,222,128,0.85)');
+      g.addColorStop(1, 'rgba(34,197,94,0)');
+    }
     ctx.fillStyle = g;
     ctx.beginPath(); ctx.arc(o.x, o.y, rr, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#ecfccb';
+    ctx.fillStyle = scw ? scw.spark : '#ecfccb';
     ctx.beginPath(); ctx.arc(o.x, o.y, rr * 0.3, 0, Math.PI * 2); ctx.fill();
   }
   // 最終昇格：各球から放射方向へ常時ビーム（毎フレーム今の球位置から描く＝ズレない）
@@ -2985,9 +3049,9 @@ function drawEvolvedWeapons() {
       ctx.save();
       ctx.globalAlpha = 0.85;
       ctx.lineCap = 'round';
-      ctx.strokeStyle = 'rgba(134,239,172,0.5)'; ctx.lineWidth = 38;
+      ctx.strokeStyle = scw ? scw.soft : 'rgba(134,239,172,0.5)'; ctx.lineWidth = 38;
       ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.lineTo(ex, ey); ctx.stroke();
-      ctx.strokeStyle = 'rgba(74,222,128,0.9)'; ctx.lineWidth = 19;
+      ctx.strokeStyle = scw ? scw.glow : 'rgba(74,222,128,0.9)'; ctx.lineWidth = 19;
       ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.lineTo(ex, ey); ctx.stroke();
       ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineWidth = 7;
       ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.lineTo(ex, ey); ctx.stroke();
@@ -3240,49 +3304,62 @@ function updateWeaponBar() {
   ui.weaponBar.innerHTML = html;
 }
 
-/* ===== 転生（プレステージ）ショップ ===== */
-function prestigePrice(item) {
-  const lv = prestigeLv(item.id);
-  return lv >= item.max ? null : item.prices[lv];
-}
-
-function renderPrestigeShop() {
-  const dust = loadStardust();
-  if (ui.stardustText) ui.stardustText.textContent = `✨ 星屑：${dust}`;
+/* ===== カスタマイズ（エフェクトスキン）ショップ =====
+ * 累計スコアで貯まるウォレットで購入。性能不変の完全コスメ。
+ * ※DOM要素id（prestige-screen/prestige-items/stardust-text）と show/hide 名は互換のため流用。 */
+function renderCustomizeShop() {
+  const wallet = loadWallet();
+  const equipped = loadEquippedSkin();
+  if (ui.stardustText) ui.stardustText.textContent = `💰 ウォレット：${wallet}`;
   if (!ui.prestigeItems) return;
   ui.prestigeItems.innerHTML = '';
-  for (const item of PRESTIGE_TREE) {
-    const lv = prestigeLv(item.id);
-    const price = prestigePrice(item);
-    const maxed = price === null;
+  for (const skin of EFFECT_SKINS) {
+    const owned = isSkinOwned(skin.id);
+    const isEquipped = skin.id === equipped;
     const btn = document.createElement('button');
     btn.className = 'shop-item';
-    btn.disabled = maxed || dust < price;
+    // 未所持で買えない時だけ無効化。所持済みは装備切替のため常に有効。
+    btn.disabled = !owned && wallet < skin.price;
+    let right;
+    if (isEquipped) right = '✅ 装備中';
+    else if (owned) right = '👕 装備する';
+    else right = `💰 ${skin.price}`;
     btn.innerHTML = `
-      <span class="card-emoji">${item.emoji}</span>
-      <span><span class="card-name">${item.name} <span class="pr-lv">Lv${lv}/${item.max}</span></span><br>
-        <span class="card-desc">${item.desc}</span></span>
-      <span class="price">${maxed ? '✅ MAX' : '✨ ' + price}</span>`;
-    if (!maxed) btn.addEventListener('click', () => buyPrestige(item));
+      <span class="card-emoji">${skin.emoji}</span>
+      <span><span class="card-name">${skin.name}</span><br>
+        <span class="card-desc">${skin.desc}</span></span>
+      <span class="price">${right}</span>`;
+    btn.addEventListener('click', () => onCustomizeClick(skin));
     ui.prestigeItems.appendChild(btn);
   }
 }
 
-function buyPrestige(item) {
-  const dust = loadStardust();
-  const price = prestigePrice(item);
-  if (price === null || dust < price) return;
-  saveStardust(dust - price);
-  const pr = loadPrestige();
-  pr[item.id] = (pr[item.id] || 0) + 1;
-  savePrestige(pr);
+function onCustomizeClick(skin) {
+  const equipped = loadEquippedSkin();
+  if (skin.id === equipped) return; // すでに装備中
+  if (isSkinOwned(skin.id)) {
+    // 所持済み → 装備切替
+    saveEquippedSkin(skin.id);
+    refreshActiveSkin();
+    SFX.coin();
+    renderCustomizeShop();
+    return;
+  }
+  // 未所持 → 購入して自動装備
+  const wallet = loadWallet();
+  if (wallet < skin.price) return;
+  saveWallet(wallet - skin.price);
+  const owned = loadOwnedSkins();
+  if (!owned.includes(skin.id)) { owned.push(skin.id); saveOwnedSkins(owned); }
+  saveEquippedSkin(skin.id);
+  refreshActiveSkin();
   SFX.coin();
-  renderPrestigeShop();
+  renderCustomizeShop();
 }
 
 function showPrestige() {
   if (!ui.prestigeScreen) return;
-  renderPrestigeShop();
+  renderCustomizeShop();
   ui.prestigeScreen.classList.remove('hidden');
 }
 function hidePrestige() {
@@ -3366,7 +3443,7 @@ function showRankingView() {
 }
 function hideRankingView() { if (ui.rankingScreen) ui.rankingScreen.classList.add('hidden'); }
 
-/* ===== 敵モンスター図鑑 ===== */
+/* ===== 敵モンスター図鑑（スプライト表示・画像が無ければ絵文字にフォールバック） ===== */
 function showDex() {
   if (!ui.dexScreen) return;
   if (ui.dexItems) {
@@ -3376,13 +3453,24 @@ function showDex() {
       slime: '倒すと小スライム2体に分裂する。', slimeMini: '分裂で生まれる小型。',
       archer: '距離を取りながら矢を放つ。', shield: 'とても硬いが動きは遅い。',
       wisp: '素早くジグザグに迫る鬼火。', brute: '大型で高HP・高火力。',
-      golem: '動きは遅いが非常に硬い。', boss: '定期出現の強敵。予告攻撃・弾幕・召喚を使う。',
+      golem: '動きは遅いが非常に硬い。',
+      swarmling: '極小の羽虫。大群で視界を埋める。', hornet: '鋭い針で突く高速の蜂。',
+      crystalback: '背の宝石が輝く亀。倒すとごほうび。', spitter: '毒の粘弾を吐く遠距離型。',
+      juggernaut: '重装甲の突進兵。正面から受けるな。',
+      boss: '定期出現の強敵。予告攻撃・弾幕・召喚を使う。',
+      bossMage: '弾幕を操る魔法使いの王。', bossTitan: '超高HPの巨獣。踏み潰しに注意。',
+      bossKnight: '大剣の高速連撃を繰り出す剣の王。',
     };
     let html = '';
     for (const [key, t] of Object.entries(ENEMY_TYPES)) {
-      html += `<div class="dex-row">
-        <span class="dex-emoji">${t.emoji}</span>
-        <span><span class="dex-name">${t.name}</span><br><span class="dex-desc">${descs[key] || ''}</span></span>
+      // スプライトを表示（読み込めなければ絵文字に切替）
+      const icon = t.sprite
+        ? `<img class="dex-sprite" src="${t.sprite}" alt="" loading="lazy"
+             onerror="this.style.display='none';this.nextElementSibling.style.display='inline'"><span class="dex-emoji" style="display:none">${t.emoji}</span>`
+        : `<span class="dex-emoji">${t.emoji}</span>`;
+      html += `<div class="dex-row${t.isBoss ? ' dex-boss' : ''}">
+        ${icon}
+        <span><span class="dex-name">${t.name}${t.isBoss ? ' 👑' : ''}</span><br><span class="dex-desc">${descs[key] || ''}</span></span>
         <span class="dex-stat">HP${t.hp}・攻${t.dmg}</span>
       </div>`;
     }
@@ -3432,7 +3520,7 @@ function showTitle() {
     ? `🏆 最高スコア：${ranks[0].score}（${escapeHtml(ranks[0].name)}）`
     : 'まだ記録なし — 初プレイ！';
   if (ui.rankingTitle) ui.rankingTitle.innerHTML = renderRankingHTML(ranks.slice(0, 5));
-  if (ui.prestigeBtn) ui.prestigeBtn.textContent = `🌌 転生（✨${loadStardust()}）`;
+  if (ui.prestigeBtn) ui.prestigeBtn.textContent = `🎨 カスタマイズ（💰${loadWallet()}）`;
   refreshSfxButtons();
   ui.titleScreen.classList.remove('hidden');
   ui.hud.classList.add('hidden');
@@ -3485,8 +3573,8 @@ function availableEvolutions() {
     const group = EVO_GROUP[ev.core];
     if (p.evolvedCore[group]) return false;                      // 同コアは進化済み
     if (upLv(ev.core) < coreReq) return false;                   // コアLv不足（Maxでなくても届く）
-    // 進化研究＋ピティで必要Lvが下がる。ev.passiveReq があればそれを基準に。
-    const req = Math.max(1, (ev.passiveReq != null ? ev.passiveReq : baseReq) - (prestigeLv('evo') >= 2 ? 1 : 0) - pity);
+    // ピティで必要Lvが下がる。ev.passiveReq があればそれを基準に。
+    const req = Math.max(1, (ev.passiveReq != null ? ev.passiveReq : baseReq) - pity);
     if (upLv(ev.passive) < req) return false;                    // パッシブ不足
     return true;
   });
@@ -3799,20 +3887,19 @@ function gameOver(won = false) {
   S.won = won;
   const p = S.player;
   const score = computeScore({ time: S.time, kills: S.kills, level: p.level });
-  // 星屑（転生通貨）を付与＝周回で強くなる。クリアはボーナス1.3倍
-  let dustGain = computeStardust(S.coins, S.time, S.bossKills);
-  if (won) dustGain = Math.round(dustGain * 1.3);
+  // カスタマイズ通貨＝このランのスコアをウォレットへ加算（クリアはボーナス1.3倍）
+  const walletGain = computeWalletGain(score, won);
   if (ui.gameoverTitle) ui.gameoverTitle.textContent = won ? '🎉 クリア！' : '💀 ゲームオーバー';
-  saveStardust(loadStardust() + dustGain);
+  addWallet(walletGain);
   // プレイ履歴を保存（時系列）
   pushHistory({
     char: p.character,
     charName: (CHARACTERS[p.character] || {}).name || p.character,
     time: Math.round(S.time), kills: S.kills, level: p.level,
-    zone: S.zone, zoneName: (ZONES[S.zone] || {}).name || '', dust: dustGain,
+    zone: S.zone, zoneName: (ZONES[S.zone] || {}).name || '', dust: walletGain,
     score, at: new Date().toISOString(), mode: S.gameMode, won,
   });
-  if (ui.stardustGain) ui.stardustGain.textContent = `✨ 獲得星屑：+${dustGain}${won ? '（クリアボーナス込）' : ''}（累計 ${loadStardust()}）`;
+  if (ui.stardustGain) ui.stardustGain.textContent = `💰 ウォレット：+${walletGain}${won ? '（クリアボーナス込）' : ''}（累計 ${loadWallet()}）`;
   const modeLabel = S.gameMode === 'timed' ? '⏱ 10分サバイバル' : '♾️ エンドレス';
   ui.resultStats.innerHTML = `
     ${won ? '<b>🎉 10分を生き延びた！</b><br>' : ''}
@@ -4075,5 +4162,6 @@ function tick(now) {
 }
 
 /* ===== 起動 ===== */
+refreshActiveSkin(); // 装備中エフェクトスキンの色パレットを読み込む
 showTitle();
 requestAnimationFrame(tick);

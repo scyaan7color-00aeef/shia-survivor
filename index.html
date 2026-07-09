@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>シア・サバイバー</title>
-<link rel="stylesheet" href="style.css?v=16">
+<link rel="stylesheet" href="style.css?v=17">
 </head>
 <body>
   <!-- ゲーム描画キャンバス -->
@@ -55,13 +55,12 @@
       </div>
       <p id="best-text" class="best"></p>
       <button id="start-btn" class="big-btn">ゲームスタート</button>
+      <button id="prestige-btn" class="big-btn ghost-btn">🎨 カスタマイズ</button>
       <div id="title-btn-row">
-        <button id="prestige-btn" class="sub-btn">🌌 転生</button>
         <button id="ranking-btn" class="sub-btn">🏆 記録</button>
         <button id="history-btn" class="sub-btn">📜 履歴</button>
         <button id="dex-btn" class="sub-btn">📖 図鑑</button>
         <button id="feedback-btn" class="sub-btn">💬 フィードバック</button>
-        <button id="skin-btn" class="sub-btn">🎨 マイキャラ</button>
         <button id="sfx-toggle-title" class="sub-btn">🔊 音ON</button>
       </div>
       <div id="ranking-title" class="ranking-wrap"></div>
@@ -111,6 +110,19 @@
     </div>
   </div>
 
+  <!-- カスタマイズ（エフェクトスキン）ショップ -->
+  <div id="prestige-screen" class="overlay hidden">
+    <div class="panel">
+      <h2>🎨 カスタマイズ</h2>
+      <p class="subtitle">プレイで貯まるウォレット（スコア）でエフェクトの見た目を変えられる。性能は変わらない</p>
+      <p id="stardust-text" class="best">💰 ウォレット：0</p>
+      <div id="prestige-items"></div>
+      <p class="subtitle" style="margin-top:14px">キャラの見た目そのものを変えるなら👇</p>
+      <button id="skin-btn" class="big-btn ghost-btn">🖼 マイキャラ（スプライト差し替え）</button>
+      <button id="prestige-close" class="big-btn">閉じる</button>
+    </div>
+  </div>
+
   <!-- マイキャラ（カスタムスプライト集）読み込み -->
   <div id="skin-screen" class="overlay hidden">
     <div class="panel">
@@ -139,30 +151,24 @@
           <span style="color:#9fb0d0">※AIの出力は完璧な整列にならないことがあります。うまくいかない時は「見本と同じ8列×9行のグリッドに揃えて」と追記してみてください。</span>
         </p>
         <p class="subtitle"><a id="skin-sample-link" href="assets/cyanissimo_sprites.png" target="_blank" rel="noopener" style="color:#7dd3fc">🖼 見本シートを開く（保存して使う）</a></p>
-        <textarea id="skin-prompt" readonly rows="10" style="width:100%;background:rgba(255,255,255,0.08);border:1px solid rgba(120,160,255,0.4);border-radius:10px;color:#e8ecf5;font-size:12px;line-height:1.6;padding:10px 12px;font-family:inherit;resize:vertical">ブラウザゲーム「シア・サバイバー」で動かすキャラのスプライト集を作ってください。
+        <textarea id="skin-prompt" readonly rows="12" style="width:100%;background:rgba(255,255,255,0.08);border:1px solid rgba(120,160,255,0.4);border-radius:10px;color:#e8ecf5;font-size:12px;line-height:1.6;padding:10px 12px;font-family:inherit;resize:vertical">「シア・サバイバー」というブラウザゲームで動かすキャラクターのスプライト集を作ってほしいです。添付する【見本シート】の並び・コマ割り・サイズ感にそのまま従いながら、もう1枚の【キャラ画像】の見た目をデフォルメして、1枚のスプライト集にまとめてください。
 
-【出力仕様】
-・1枚の画像に 8列 × 9行 = 72コマ を等間隔のグリッドで並べる
-・各コマは同じサイズ・透明背景・キャラは中央
-・行ごとのポーズ（左→右で少しずつ動く連続アニメにする）：
-　1行目 待機／2行目 右へ走る／3行目 左へ走る／4行目 手を振る／5行目 ジャンプ／6行目 転ぶ／7行目 走る／8行目 待つ／9行目 本を読む
-・添付の「見本シート」とまったく同じコマ配置・向き・サイズ感にする
-・添付の「キャラ画像」の見た目（髪色・服・雰囲気）を反映する
-・アニメ調で、動かすと可愛いテイストに</textarea>
+■ かたち
+・1枚の画像に 8列 × 9行 ＝ 72コマ を、等間隔のきれいなグリッドで並べる
+・どのコマも同じ大きさ／背景は透明／キャラは各マスの中央に置く
+・横（左→右）は少しずつ動く連続アニメになるように描く
+
+■ 9つの行それぞれのポーズ（上から順に）
+1行目：待機　2行目：右へ走る　3行目：左へ走る　4行目：手を振る
+5行目：ジャンプ　6行目：転ぶ　7行目：ひと休み　8行目：走る　9行目：本を読む
+
+■ 見た目
+・【キャラ画像】の髪色・服・雰囲気をしっかり反映する
+・線がはっきりしたアニメ調で、動かすと可愛く見えるテイストに
+・【見本シート】とコマの配置・向き・余白の取り方を必ず揃える</textarea>
         <button id="skin-copy" class="big-btn" style="margin-top:8px">プロンプトをコピー</button>
       </div>
       <button id="skin-close" class="big-btn ghost-btn" style="margin-top:12px">閉じる</button>
-    </div>
-  </div>
-
-  <!-- 転生（プレステージ）ショップ -->
-  <div id="prestige-screen" class="overlay hidden">
-    <div class="panel">
-      <h2>🌌 転生</h2>
-      <p class="subtitle">星屑を使う恒久強化。周回するほど強くなる</p>
-      <p id="stardust-text" class="best">✨ 星屑：0</p>
-      <div id="prestige-items"></div>
-      <button id="prestige-close" class="big-btn">閉じる</button>
     </div>
   </div>
 
@@ -210,6 +216,6 @@
     </div>
   </div>
 
-  <script src="game.js?v=16"></script>
+  <script src="game.js?v=17"></script>
 </body>
 </html>
