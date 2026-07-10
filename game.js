@@ -116,8 +116,10 @@ const CONFIG = {
   STARDUST_KEY: 'cyanissimo_survivor_stardust',    // 【旧】星屑（転生通貨）残高。ウォレットへ移行済（読み取りは移行のみ）
   PRESTIGE_KEY: 'cyanissimo_survivor_prestige_v1', // 【旧】恒久強化の取得段数（撤廃・未使用）
   WALLET_KEY: 'cyanissimo_survivor_wallet_v1',     // カスタマイズ通貨＝累計スコアで貯まるウォレット残高
-  SKIN_KEY: 'cyanissimo_survivor_effectskin_v1',   // 装備中のエフェクトスキンID
+  SKIN_KEY: 'cyanissimo_survivor_effectskin_v1',   // 装備中のエフェクトスキン（全体カラー）ID
   OWNED_SKINS_KEY: 'cyanissimo_survivor_ownedskins_v1', // 購入済みエフェクトスキンID配列
+  FORM_SKIN_KEY: 'cyanissimo_survivor_formskin_v1',      // 装備中の形状スキン {bullet,sweep,orb,shock}
+  OWNED_FORMS_KEY: 'cyanissimo_survivor_ownedforms_v1',  // 購入済み形状スキン "cat:id" 配列
   WALLET_MIGRATED_KEY: 'cyanissimo_survivor_wallet_migrated', // 旧星屑→ウォレット移行済フラグ
   HISTORY_KEY: 'cyanissimo_survivor_history_v1',   // プレイ履歴（時系列）
   HISTORY_MAX: 15,           // 履歴の保持件数
@@ -554,6 +556,36 @@ const EFFECT_SKINS = [
     col: { core: '#67e8f9', glow: 'rgba(103,232,249,0.9)', soft: 'rgba(165,243,252,0.5)', spark: '#eafcff' } },
 ];
 
+/* ===== 形状スキン（武器ごとに"形そのもの"を差し替える・性能不変） =====
+ * 全体カラーとは独立して装備できる。判定・範囲・ダメージには一切影響しない。 */
+const FORM_SKINS = {
+  bullet: { label: '✨ 弾', items: [
+    { id: 'default', emoji: '✨', name: '魔法弾', price: 0, desc: '標準の光る魔法弾' },
+    { id: 'kettle', emoji: '🫖', name: 'やかん', price: 5000, desc: 'やかんがくるくる回転しながら飛んでいく' },
+  ] },
+  sweep: { label: '🌀 薙ぎ払い', items: [
+    { id: 'default', emoji: '🔨', name: '釘バット', price: 0, desc: '標準の釘バット' },
+    { id: 'club', emoji: '🏏', name: '棍棒', price: 4000, desc: 'ごつごつした木の棍棒で薙ぎ払う' },
+  ] },
+  orb: { label: '🟢 魔法球（ソフィア）', items: [
+    { id: 'default', emoji: '🟢', name: '標準', price: 0, desc: '標準の魔法球' },
+    { id: 'thunder', emoji: '⚡', name: '雷まとい', price: 6000, desc: '球が稲妻をまとって周回する' },
+  ] },
+  shock: { label: '💥 衝撃波', items: [
+    { id: 'default', emoji: '⭕', name: '魔法陣', price: 0, desc: '標準の魔法陣リング' },
+    { id: 'wave', emoji: '🌊', name: '波状攻撃', price: 6000, desc: '全方位へ波紋が連なって広がる（範囲・威力は同じ）' },
+  ] },
+  funnel: { label: '🛰️ ファンネル光線', items: [
+    { id: 'default', emoji: '🔵', name: '蒼銀', price: 0, desc: '標準の青白い光線' },
+    { id: 'crimson', emoji: '🔴', name: '紅蓮', price: 3000, desc: '燃えるような紅の光線',
+      beam: { outer: 'rgba(252,165,165,0.55)', inner: 'rgba(248,113,113,0.9)' } },
+    { id: 'violet', emoji: '🟣', name: '菫', price: 3000, desc: '妖しく光る紫の光線',
+      beam: { outer: 'rgba(216,180,254,0.55)', inner: 'rgba(192,132,252,0.9)' } },
+    { id: 'gold', emoji: '🟡', name: '黄金', price: 3000, desc: 'まばゆい金色の光線',
+      beam: { outer: 'rgba(253,224,71,0.55)', inner: 'rgba(251,191,36,0.9)' } },
+  ] },
+};
+
 /* =========================================================
  * 画像ローダー：読み込めたら画像、失敗したら絵文字にフォールバック
  * ========================================================= */
@@ -607,13 +639,29 @@ function loadOwnedSkins() {
 function saveOwnedSkins(list) { try { localStorage.setItem(CONFIG.OWNED_SKINS_KEY, JSON.stringify(list)); } catch {} }
 function isSkinOwned(id) { return id === 'default' || loadOwnedSkins().includes(id); }
 
-// 現在装備中スキンの色パレット（default＝null＝各描画は既定色のまま＝無改変）
+// 形状スキン：装備中 {bullet,sweep,orb,shock} と購入済み "cat:id" 一覧
+function loadEquippedForms() {
+  try { const o = JSON.parse(localStorage.getItem(CONFIG.FORM_SKIN_KEY)); return (o && typeof o === 'object') ? o : {}; }
+  catch { return {}; }
+}
+function saveEquippedForms(o) { try { localStorage.setItem(CONFIG.FORM_SKIN_KEY, JSON.stringify(o)); } catch {} }
+function loadOwnedForms() {
+  try { const a = JSON.parse(localStorage.getItem(CONFIG.OWNED_FORMS_KEY)); return Array.isArray(a) ? a : []; }
+  catch { return []; }
+}
+function saveOwnedForms(list) { try { localStorage.setItem(CONFIG.OWNED_FORMS_KEY, JSON.stringify(list)); } catch {} }
+function isFormOwned(cat, id) { return id === 'default' || loadOwnedForms().includes(`${cat}:${id}`); }
+
+// 現在装備中スキンのキャッシュ（default＝色はnull・形は'default'＝各描画は既定のまま＝無改変）
 let _activeSkinCol = null;
+let _activeForms = {};
 function refreshActiveSkin() {
   const s = EFFECT_SKINS.find(x => x.id === loadEquippedSkin());
   _activeSkinCol = (s && s.col) ? s.col : null;
+  _activeForms = loadEquippedForms();
 }
 function skinCol() { return _activeSkinCol; } // null なら既定色を使う（呼び出し側でフォールバック）
+function formOf(cat) { return _activeForms[cat] || 'default'; } // 装備中の形状スキンID
 // rgba(...)文字列のアルファを0にする（グラデーションの端＝完全透明用）
 function fadeRGBA(c) { return c.replace(/[\d.]+\)$/, '0)'); }
 
@@ -2368,6 +2416,7 @@ for (const [key, ch] of Object.entries(CHARACTERS)) {
   charSheets[key] = { webp: loadImage(ch.sheet), png: loadImage(ch.sheetPng) };
 }
 loadImage(BULLET_SPRITE);
+loadImage('assets/bullet_kettle.png'); // 形状スキン：やかん弾（未配置なら絵文字弾へフォールバック）
 // 薙ぎ払い（釘バット）はコード描画のみ＝sweep.png/nailbat.pngはロードしない
 // （コード描画はスイング半径に合わせて劣化なく拡縮でき、残像トレイルとも一体のため）
 loadImage('assets/shockwave.png');  // 衝撃波エフェクト（旧フォールバック）
@@ -2646,6 +2695,19 @@ function drawBullets() {
       continue;
     }
     const sc = skinCol();
+    // 形状スキン：やかん弾＝進行方向＋スピン回転で飛ぶ（画像未ロード時は下の既定描画へ）
+    if (formOf('bullet') === 'kettle') {
+      const kettle = imageCache.get('assets/bullet_kettle.png');
+      if (kettle && kettle.ok) {
+        const d = b.radius * 3.2;
+        ctx.save();
+        ctx.translate(b.x, b.y);
+        ctx.rotate(Math.atan2(b.vy, b.vx) + S.time * 10);
+        ctx.drawImage(kettle.img, -d / 2, -d / 2, d, d);
+        ctx.restore();
+        continue;
+      }
+    }
     if (!sc && entry && entry.ok) {
       // 標準スキン：従来どおり bullet.png（無改変）
       ctx.drawImage(entry.img, b.x - b.radius * 1.6, b.y - b.radius * 1.6, b.radius * 3.2, b.radius * 3.2);
@@ -2741,6 +2803,40 @@ function drawNailBatSweep(fx) {
   const h0 = R * 0.20, h1 = R * 0.98;           // 握り元→先端
   const wNear = R * 0.05, wFar = R * 0.12;      // 手元→先端の太さ（先太り）
   const spikeLen = R * 0.10, spikeHalf = R * 0.032;
+  // 形状スキン：棍棒＝ごつごつした木の棍棒（トゲ・金属バンド無し・先端が丸い）
+  if (formOf('sweep') === 'club') {
+    const cw = wFar * 1.3;
+    // 黒い縁取り（シルエット）
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = R * 0.2; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(h1, 0); ctx.stroke();
+    // グリップ（濃茶）
+    ctx.strokeStyle = '#4a3626'; ctx.lineWidth = wNear * 1.5;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(h0, 0); ctx.stroke();
+    // 本体（先太り・丸い先端・木のグラデ）
+    const cg = ctx.createLinearGradient(h0, 0, h1, 0);
+    cg.addColorStop(0, '#6b4a26'); cg.addColorStop(1, '#a06f38');
+    ctx.beginPath();
+    ctx.moveTo(h0, -wNear);
+    ctx.quadraticCurveTo((h0 + h1) / 2, -cw * 0.85, h1 - cw * 0.4, -cw);
+    ctx.quadraticCurveTo(h1 + cw * 0.95, 0, h1 - cw * 0.4, cw);
+    ctx.quadraticCurveTo((h0 + h1) / 2, cw * 0.85, h0, wNear);
+    ctx.closePath();
+    ctx.fillStyle = cg; ctx.fill();
+    ctx.strokeStyle = '#3f2a14'; ctx.lineWidth = 2; ctx.stroke();
+    // ごつごつの節（こぶ）
+    ctx.fillStyle = 'rgba(63,42,20,0.6)';
+    for (const [tt, s] of [[0.55, 1], [0.72, -1], [0.88, 1]]) {
+      const px = h0 + (h1 - h0) * tt;
+      const w = wNear + (cw - wNear) * tt;
+      ctx.beginPath(); ctx.arc(px, s * w * 0.55, Math.max(2, R * 0.03), 0, Math.PI * 2); ctx.fill();
+    }
+    // 木目のハイライト
+    ctx.strokeStyle = 'rgba(255,225,175,0.45)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(h0, -wNear * 0.3); ctx.lineTo(h1 - cw * 0.6, -cw * 0.5); ctx.stroke();
+    ctx.restore();
+    ctx.globalAlpha = 1;
+    return;
+  }
   // 黒い縁取り（シルエット）：暗背景・トレイルの中でも埋もれない
   ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = R * 0.17; ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(h1, 0); ctx.stroke();
@@ -2894,13 +2990,15 @@ function drawEffects() {
         ctx.beginPath(); ctx.arc(rx - size * 0.3, ry - size * 0.3, size * 0.34, 0, Math.PI * 2); ctx.fill();
       }
     } else if (fx.kind === 'fbeam') {
-      // 光線（太光線はさらに極太＋外側グロー）。色は青／緑（スキン装備時はスキン色）
+      // 光線（太光線はさらに極太＋外側グロー）。色は青／緑
+      // 優先度：ファンネル光線の形状スキン ＞ 全体カラー ＞ 既定色
       const a = Math.max(0, fx.t / fx.maxT);
       const ex = fx.x + Math.cos(fx.angle) * fx.len, ey = fx.y + Math.sin(fx.angle) * fx.len;
       const scb = skinCol();
+      const fBeam = (FORM_SKINS.funnel.items.find(x => x.id === formOf('funnel')) || {}).beam || null;
       const green = fx.color === 'green';
-      const outer = scb ? scb.soft : (green ? 'rgba(134,239,172,0.55)' : 'rgba(125,211,252,0.55)');
-      const inner = scb ? scb.glow : (green ? 'rgba(74,222,128,0.9)' : 'rgba(147,197,253,0.9)');
+      const outer = fBeam ? fBeam.outer : scb ? scb.soft : (green ? 'rgba(134,239,172,0.55)' : 'rgba(125,211,252,0.55)');
+      const inner = fBeam ? fBeam.inner : scb ? scb.glow : (green ? 'rgba(74,222,128,0.9)' : 'rgba(147,197,253,0.9)');
       ctx.globalAlpha = a;
       ctx.lineCap = 'round';
       ctx.strokeStyle = outer; ctx.lineWidth = fx.thick * 2;
@@ -2965,13 +3063,15 @@ function drawEffects() {
     } else if (fx.kind === 'shock') {
       const alpha = Math.max(0, 1 - fx.r / fx.maxR);
       // スキン装備時は画像を使わずスキン色のリングで描く（標準は従来どおり）
+      // 形状スキン「波状攻撃」装備時も画像をスキップ（判定・範囲・速度は完全に同一＝見た目のみ）
       const scq = skinCol();
+      const waveForm = formOf('shock') === 'wave';
       // 魔法陣アート：シア（射手）＝青／ソフィア（魔導士）＝緑。回転させながら拡大。
       // 他職業・画像未読込時は従来描画（shockwave.png→図形リング）にフォールバック
       const arch = S.player && S.player.archetype;
       const circleSrc = arch === 'gunner' ? 'assets/magic_circle_blue.png'
                       : arch === 'mage'   ? 'assets/magic_circle_green.png' : null;
-      const circle = (!scq && circleSrc) ? imageCache.get(circleSrc) : null;
+      const circle = (!scq && !waveForm && circleSrc) ? imageCache.get(circleSrc) : null;
       if (circle && circle.ok && fx.r > 1) {
         ctx.save();
         ctx.translate(fx.x, fx.y);
@@ -2982,10 +3082,31 @@ function drawEffects() {
         ctx.globalAlpha = 1;
         continue;
       }
-      const img = scq ? null : imageCache.get('assets/shockwave.png');
+      const img = (scq || waveForm) ? null : imageCache.get('assets/shockwave.png');
       if (img && img.ok) {
         ctx.globalAlpha = alpha;
         ctx.drawImage(img.img, fx.x - fx.r, fx.y - fx.r, fx.r * 2, fx.r * 2);
+        ctx.globalAlpha = 1;
+      } else if (waveForm) {
+        // 波状攻撃：波打つ波面が3枚連なって全方位へ広がる
+        const col = scq ? { main: scq.core, glow: scq.spark } : shockColors();
+        for (let w = 0; w < 3; w++) {
+          const rw = fx.r - w * 24;
+          if (rw <= 6) continue;
+          const aw = Math.max(0, alpha * (1 - w * 0.3));
+          ctx.beginPath();
+          for (let i = 0; i <= 48; i++) {
+            const th = (Math.PI * 2 / 48) * i;
+            const rr2 = rw + Math.sin(th * 10 + S.time * 12 + w * 2) * (4 + w * 2);
+            const px = fx.x + Math.cos(th) * rr2, py = fx.y + Math.sin(th) * rr2;
+            if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+          }
+          ctx.closePath();
+          ctx.globalAlpha = aw * 0.9; ctx.strokeStyle = col.main; ctx.lineWidth = Math.max(1.5, 4 - w);
+          ctx.stroke();
+          ctx.globalAlpha = aw * 0.3; ctx.strokeStyle = col.glow; ctx.lineWidth = Math.max(3, 9 - w * 2);
+          ctx.stroke();
+        }
         ctx.globalAlpha = 1;
       } else {
         const col = scq ? { main: scq.core, glow: scq.spark } : shockColors();
@@ -3039,6 +3160,27 @@ function drawEvolvedWeapons() {
     ctx.beginPath(); ctx.arc(o.x, o.y, rr, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = scw ? scw.spark : '#ecfccb';
     ctx.beginPath(); ctx.arc(o.x, o.y, rr * 0.3, 0, Math.PI * 2); ctx.fill();
+    // 形状スキン：雷まとい＝球の周りにチカチカ揺れる稲妻の折れ線
+    if (formOf('orb') === 'thunder') {
+      ctx.save();
+      ctx.strokeStyle = scw ? scw.spark : '#fef08a';
+      ctx.lineWidth = 1.5;
+      ctx.lineJoin = 'miter';
+      for (let k = 0; k < 3; k++) {
+        ctx.globalAlpha = 0.45 + 0.4 * Math.abs(Math.sin(S.time * 21 + k * 2.6 + o.x * 0.02));
+        let a = (S.time * 6 + k * 2.1 + (o.x + o.y) * 0.01) % (Math.PI * 2);
+        ctx.beginPath();
+        ctx.moveTo(o.x + Math.cos(a) * rr * 0.55, o.y + Math.sin(a) * rr * 0.55);
+        for (let seg = 1; seg <= 3; seg++) {
+          const rr2 = rr * (0.55 + seg * 0.38);
+          const ja = a + Math.sin(S.time * 29 + seg * 5 + k * 7) * 0.45;
+          ctx.lineTo(o.x + Math.cos(ja) * rr2, o.y + Math.sin(ja) * rr2);
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    }
   }
   // 最終昇格：各球から放射方向へ常時ビーム（毎フレーム今の球位置から描く＝ズレない）
   if (p.finalEvo.bullet) {
@@ -3307,31 +3449,78 @@ function updateWeaponBar() {
 /* ===== カスタマイズ（エフェクトスキン）ショップ =====
  * 累計スコアで貯まるウォレットで購入。性能不変の完全コスメ。
  * ※DOM要素id（prestige-screen/prestige-items/stardust-text）と show/hide 名は互換のため流用。 */
+// ショップの1行（購入/装備/装備中）を作る共通ヘルパー
+function makeShopRow(item, isEquipped, owned, wallet, onClick) {
+  const btn = document.createElement('button');
+  btn.className = 'shop-item';
+  // 未所持で買えない時だけ無効化。所持済みは装備切替のため常に有効。
+  btn.disabled = !owned && wallet < item.price;
+  let right;
+  if (isEquipped) right = '✅ 装備中';
+  else if (owned) right = '👕 装備する';
+  else right = `💰 ${item.price}`;
+  btn.innerHTML = `
+    <span class="card-emoji">${item.emoji}</span>
+    <span><span class="card-name">${item.name}</span><br>
+      <span class="card-desc">${item.desc}</span></span>
+    <span class="price">${right}</span>`;
+  btn.addEventListener('click', onClick);
+  return btn;
+}
+
 function renderCustomizeShop() {
   const wallet = loadWallet();
-  const equipped = loadEquippedSkin();
   if (ui.stardustText) ui.stardustText.textContent = `💰 ウォレット：${wallet}`;
   if (!ui.prestigeItems) return;
   ui.prestigeItems.innerHTML = '';
-  for (const skin of EFFECT_SKINS) {
-    const owned = isSkinOwned(skin.id);
-    const isEquipped = skin.id === equipped;
-    const btn = document.createElement('button');
-    btn.className = 'shop-item';
-    // 未所持で買えない時だけ無効化。所持済みは装備切替のため常に有効。
-    btn.disabled = !owned && wallet < skin.price;
-    let right;
-    if (isEquipped) right = '✅ 装備中';
-    else if (owned) right = '👕 装備する';
-    else right = `💰 ${skin.price}`;
-    btn.innerHTML = `
-      <span class="card-emoji">${skin.emoji}</span>
-      <span><span class="card-name">${skin.name}</span><br>
-        <span class="card-desc">${skin.desc}</span></span>
-      <span class="price">${right}</span>`;
-    btn.addEventListener('click', () => onCustomizeClick(skin));
-    ui.prestigeItems.appendChild(btn);
+  const addHeader = text => {
+    const h = document.createElement('p');
+    h.className = 'subtitle shop-section';
+    h.textContent = text;
+    ui.prestigeItems.appendChild(h);
+  };
+  // 武器ごとの形状スキン
+  const forms = loadEquippedForms();
+  for (const [cat, group] of Object.entries(FORM_SKINS)) {
+    addHeader(group.label);
+    for (const item of group.items) {
+      const isEquipped = (forms[cat] || 'default') === item.id;
+      ui.prestigeItems.appendChild(
+        makeShopRow(item, isEquipped, isFormOwned(cat, item.id), wallet, () => onFormClick(cat, item)));
+    }
   }
+  // 全体カラー（色スキン）
+  addHeader('🎨 全体カラー');
+  const equipped = loadEquippedSkin();
+  for (const skin of EFFECT_SKINS) {
+    ui.prestigeItems.appendChild(
+      makeShopRow(skin, skin.id === equipped, isSkinOwned(skin.id), wallet, () => onCustomizeClick(skin)));
+  }
+}
+
+// 形状スキンの購入・装備切替
+function onFormClick(cat, item) {
+  const forms = loadEquippedForms();
+  if ((forms[cat] || 'default') === item.id) return; // すでに装備中
+  if (isFormOwned(cat, item.id)) {
+    forms[cat] = item.id;
+    saveEquippedForms(forms);
+    refreshActiveSkin();
+    SFX.coin();
+    renderCustomizeShop();
+    return;
+  }
+  const wallet = loadWallet();
+  if (wallet < item.price) return;
+  saveWallet(wallet - item.price);
+  const owned = loadOwnedForms();
+  const key = `${cat}:${item.id}`;
+  if (!owned.includes(key)) { owned.push(key); saveOwnedForms(owned); }
+  forms[cat] = item.id;
+  saveEquippedForms(forms);
+  refreshActiveSkin();
+  SFX.coin();
+  renderCustomizeShop();
 }
 
 function onCustomizeClick(skin) {

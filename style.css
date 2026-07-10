@@ -402,6 +402,7 @@ html, body {
 .dex-emoji { font-size: 22px; }
 .dex-sprite { width: 34px; height: 34px; object-fit: contain; flex-shrink: 0; }
 .dex-boss { background: rgba(244,63,94,0.08); border-radius: 8px; }
+.shop-section { margin: 14px 0 6px; font-weight: 700; color: #a5b4fc; text-align: left; }
 .dex-name { font-size: 14px; font-weight: bold; }
 .dex-desc { font-size: 11px; color: #9fb0d0; }
 .dex-stat { font-size: 11px; color: #fbbf24; white-space: nowrap; }
