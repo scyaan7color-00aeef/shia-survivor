@@ -563,20 +563,24 @@ const FORM_SKINS = {
     { id: 'default', emoji: '✨', name: '魔法弾', price: 0, desc: '標準の光る魔法弾' },
     { id: 'kettle', emoji: '🫖', name: 'やかん', price: 5000, desc: 'やかんがくるくる回転しながら飛んでいく' },
     { id: 'star', emoji: '⭐', name: '星屑弾', price: 3000, desc: '金色の星がくるくる飛んでいく' },
+    { id: 'plane', emoji: '✈️', name: '紙飛行機', price: 3000, desc: '白い紙飛行機がすーっと飛んでいく' },
   ] },
   sweep: { label: '🌀 薙ぎ払い', items: [
     { id: 'default', emoji: '🔨', name: '釘バット', price: 0, desc: '標準の釘バット' },
     { id: 'club', emoji: '🏏', name: '棍棒', price: 4000, desc: 'ごつごつした木の棍棒で薙ぎ払う' },
     { id: 'harisen', emoji: '🪭', name: 'ハリセン', price: 5000, desc: '白いハリセンでスパーンと薙ぎ払う' },
+    { id: 'negi', emoji: '🥬', name: '長ネギ', price: 4000, desc: 'つやつやの長ネギで薙ぎ払う' },
   ] },
   orb: { label: '🟢 魔法球（ソフィア）', items: [
     { id: 'default', emoji: '🟢', name: '標準', price: 0, desc: '標準の魔法球' },
     { id: 'thunder', emoji: '⚡', name: '雷まとい', price: 6000, desc: '球が稲妻をまとって周回する' },
     { id: 'moon', emoji: '🌙', name: '三日月', price: 4000, desc: '可愛い三日月が周回する' },
+    { id: 'sakura', emoji: '🌸', name: '桜の花', price: 4000, desc: '桜の花がひらひら周回する' },
   ] },
   meteor: { label: '☄️ 落石', items: [
     { id: 'default', emoji: '🪨', name: '岩', price: 0, desc: '標準の落石' },
     { id: 'taiyaki', emoji: '🐟', name: 'たい焼き', price: 4000, desc: '空からたい焼きが降ってくる' },
+    { id: 'pudding', emoji: '🍮', name: 'プリン', price: 4000, desc: '空からプリンが降ってくる' },
   ] },
   shock: { label: '💥 衝撃波', items: [
     { id: 'default', emoji: '⭕', name: '魔法陣', price: 0, desc: '標準の魔法陣リング' },
@@ -2423,12 +2427,13 @@ for (const [key, ch] of Object.entries(CHARACTERS)) {
   charSheets[key] = { webp: loadImage(ch.sheet), png: loadImage(ch.sheetPng) };
 }
 loadImage(BULLET_SPRITE);
-// 形状スキン用画像（未配置でも既定描画にフォールバックするので安全）
-const BULLET_FORM_IMG = { kettle: 'assets/bullet_kettle.png', star: 'assets/bullet_star.png' };
-for (const src of Object.values(BULLET_FORM_IMG)) loadImage(src);
-loadImage('assets/orb_moon.png');      // 三日月の魔法球
-loadImage('assets/meteor_taiyaki.png'); // たい焼き落石
-loadImage('assets/sweep_harisen.png');  // ハリセン薙ぎ払い
+// 形状スキン用画像マップ（スキンID → 画像。未配置でも既定描画にフォールバックするので安全）
+const BULLET_FORM_IMG = { kettle: 'assets/bullet_kettle.png', star: 'assets/bullet_star.png', plane: 'assets/bullet_plane.png' };
+const SWEEP_FORM_IMG  = { harisen: 'assets/sweep_harisen.png', negi: 'assets/sweep_negi.png' };
+const ORB_FORM_IMG    = { moon: 'assets/orb_moon.png', sakura: 'assets/orb_sakura.png' };
+const METEOR_FORM_IMG = { taiyaki: 'assets/meteor_taiyaki.png', pudding: 'assets/meteor_pudding.png' };
+for (const m of [BULLET_FORM_IMG, SWEEP_FORM_IMG, ORB_FORM_IMG, METEOR_FORM_IMG])
+  for (const src of Object.values(m)) loadImage(src);
 // 薙ぎ払い（釘バット）はコード描画のみ＝sweep.png/nailbat.pngはロードしない
 // （コード描画はスイング半径に合わせて劣化なく拡縮でき、残像トレイルとも一体のため）
 loadImage('assets/shockwave.png');  // 衝撃波エフェクト（旧フォールバック）
@@ -2816,9 +2821,10 @@ function drawNailBatSweep(fx) {
   const h0 = R * 0.20, h1 = R * 0.98;           // 握り元→先端
   const wNear = R * 0.05, wFar = R * 0.12;      // 手元→先端の太さ（先太り）
   const spikeLen = R * 0.10, spikeHalf = R * 0.032;
-  // 形状スキン：ハリセン＝持ち手を軸に画像を振り回す（未ロード時は釘バットへ）
-  if (formOf('sweep') === 'harisen') {
-    const himg = imageCache.get('assets/sweep_harisen.png');
+  // 形状スキン：画像武器（ハリセン/長ネギ）＝持ち手を軸に画像を振り回す（未ロード時は釘バットへ）
+  const sweepFormSrc = SWEEP_FORM_IMG[formOf('sweep')];
+  if (sweepFormSrc) {
+    const himg = imageCache.get(sweepFormSrc);
     if (himg && himg.ok) {
       // 画像は256x256・持ち手が左端中央→原点（プレイヤーの手元）から右へ伸ばして描く
       ctx.drawImage(himg.img, 0, -R * 0.5, R, R);
@@ -2996,10 +3002,10 @@ function drawEffects() {
         ctx.globalAlpha = 1;
       }
       // 岩本体：隕石(big)はCodex製スプライト、通常の落石(small)は従来の手続き描画
-      // 形状スキン：たい焼き＝大小どちらも たい焼き画像で落ちてくる
+      // 形状スキン：画像落下物（たい焼き/プリン）＝大小どちらも画像で落ちてくる
       ctx.globalAlpha = 1;
-      if (formOf('meteor') === 'taiyaki') {
-        const timg = imageCache.get('assets/meteor_taiyaki.png');
+      if (METEOR_FORM_IMG[formOf('meteor')]) {
+        const timg = imageCache.get(METEOR_FORM_IMG[formOf('meteor')]);
         if (timg && timg.ok) {
           const d = size * 2.7;
           ctx.save();
@@ -3183,9 +3189,10 @@ function drawEvolvedWeapons() {
   const scw = skinCol();
   for (const o of p.orbs) {
     const rr = (o.r || 16);
-    // 形状スキン：三日月＝ゆっくり自転する月画像（未ロード時は既定の球へ）
-    if (formOf('orb') === 'moon') {
-      const mimg = imageCache.get('assets/orb_moon.png');
+    // 形状スキン：画像球（三日月/桜の花）＝ゆっくり自転する画像（未ロード時は既定の球へ）
+    const orbFormSrc = ORB_FORM_IMG[formOf('orb')];
+    if (orbFormSrc) {
+      const mimg = imageCache.get(orbFormSrc);
       if (mimg && mimg.ok) {
         const d = rr * 2.6;
         ctx.save();
